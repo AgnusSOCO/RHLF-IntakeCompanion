@@ -38,7 +38,7 @@ internal static class Program
 
         // Single instance: two companions fighting over one extension flap the
         // backend socket. Second launch just reports and exits.
-        using var mutex = new Mutex(true, "RHLF.IntakeCompanion.SingleInstance", out bool createdNew);
+        using var mutex = new Mutex(true, @"Global\RHLF.IntakeCompanion.SingleInstance", out bool createdNew);
         if (!createdNew)
         {
             MessageBox.Show(
