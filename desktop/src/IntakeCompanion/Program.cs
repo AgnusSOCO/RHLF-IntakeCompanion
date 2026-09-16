@@ -36,6 +36,17 @@ internal static class Program
 
         ApplicationConfiguration.Initialize();
 
+        // Single instance: two companions fighting over one extension flap the
+        // backend socket. Second launch just reports and exits.
+        using var mutex = new Mutex(true, "RHLF.IntakeCompanion.SingleInstance", out bool createdNew);
+        if (!createdNew)
+        {
+            MessageBox.Show(
+                "Intake Assistant is already running — check the system tray by the clock.",
+                "RHLF Intake Assistant", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            return 0;
+        }
+
         if (HasArg("--diag"))
         {
             MessageBox.Show(DeviceHelper.DescribeDevices(), "IntakeCompanion - audio devices",

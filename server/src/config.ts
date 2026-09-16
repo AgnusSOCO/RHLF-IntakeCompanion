@@ -11,11 +11,13 @@ export const config = {
   deepgramApiKey: env("DEEPGRAM_API_KEY"),
   dgModel: env("DG_MODEL", "nova-3"),
   dgLanguage: env("DG_LANGUAGE", "multi"),
-  // AI assist (OpenAI-compatible chat completions). Optional — without a key,
-  // the deterministic playbook matcher still runs.
+  // AI assist. Optional — without a key, the deterministic playbook matcher
+  // still runs. LLM_PROVIDER: "anthropic" | "openai" (any OpenAI-compatible
+  // endpoint works for "openai", e.g. Groq).
+  llmProvider: env("LLM_PROVIDER", "openai"),
   llmApiKey: env("LLM_API_KEY"),
-  llmBaseUrl: env("LLM_BASE_URL", "https://api.openai.com/v1"),
-  llmModel: env("LLM_MODEL", "gpt-4o-mini"),
+  llmBaseUrl: env("LLM_BASE_URL"),
+  llmModel: env("LLM_MODEL"),
   rc: {
     serverUrl: env("RC_SERVER_URL", "https://platform.ringcentral.com"),
     clientId: env("RC_CLIENT_ID"),

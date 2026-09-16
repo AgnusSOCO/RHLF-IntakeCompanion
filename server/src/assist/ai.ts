@@ -37,52 +37,27 @@ RULES:
 6. escalate=true for medical emergencies, self-harm statements, criminal matters, immigration status, complaints about the firm, or anything where a wrong answer could harm the caller or the firm. On escalation, "response" should tell the agent what to say briefly (e.g. offer to bring in a supervisor) rather than answering substance.
 7. Output ONLY JSON: {"should_respond": bool, "title": string, "response": string, "follow_up": string, "escalate": bool}`;
 
-export async function assistWithAi(
+const USER_PAYLOAD = (
   history: { speaker: string; text: string }[],
   lastUtterance: string,
   language?: string
-): Promise<AiAssist | null> {
-  if (!config.llmApiKey) return null;
-
-  const res = await fetch(`${config.llmBaseUrl}/chat/completions`, {
-    method: "POST",
-    headers: {
-      authorization: `Bearer ${config.llmApiKey}`,
-      "content-type": "application/json",
-    },
-    body: JSON.stringify({
-      model: config.llmModel,
-      temperature: 0.2,
-      max_tokens: 220,
-      response_format: { type: "json_object" },
-      messages: [
-        { role: "system", content: SYSTEM_PROMPT },
-        {
-          role: "user",
-          content: JSON.stringify({
-            caller_language: language ?? "en",
-            recent_transcript: history.slice(-10),
-            latest_caller_utterance: lastUtterance,
-          }),
-        },
-      ],
-    }),
+) =>
+  JSON.stringify({
+    caller_language: language ?? "en",
+    recent_transcript: history.slice(-10),
+    latest_caller_utterance: lastUtterance,
   });
 
-  if (!res.ok) throw new Error(`LLM ${res.status}: ${await res.text().catch(() => "")}`);
-  const data = (await res.json()) as {
-    choices?: { message?: { content?: string } }[];
-  };
-  const content = data.choices?.[0]?.message?.content;
-  if (!content) return null;
+interface RawAi {
+  should_respond?: boolean;
+  title?: string;
+  response?: string;
+  follow_up?: string;
+  escalate?: boolean;
+}
 
-  const parsed = JSON.parse(content) as {
-    should_respond?: boolean;
-    title?: string;
-    response?: string;
-    follow_up?: string;
-    escalate?: boolean;
-  };
+function parseAiJson(content: string): AiAssist | null {
+  const parsed = JSON.parse(content) as RawAi;
   if (!parsed.should_respond) return null;
   return {
     shouldRespond: true,
@@ -91,4 +66,82 @@ export async function assistWithAi(
     followUp: parsed.follow_up ?? "",
     escalate: Boolean(parsed.escalate),
   };
+}
+
+async function callOpenAiCompatible(
+  history: { speaker: string; text: string }[],
+  lastUtterance: string,
+  language?: string
+): Promise<string | null> {
+  const res = await fetch(
+    `${config.llmBaseUrl || "https://api.openai.com/v1"}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${config.llmApiKey}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: config.llmModel || "gpt-4o-mini",
+        temperature: 0.2,
+        max_tokens: 220,
+        response_format: { type: "json_object" },
+        messages: [
+          { role: "system", content: SYSTEM_PROMPT },
+          { role: "user", content: USER_PAYLOAD(history, lastUtterance, language) },
+        ],
+      }),
+    }
+  );
+  if (!res.ok) throw new Error(`LLM ${res.status}: ${await res.text().catch(() => "")}`);
+  const data = (await res.json()) as { choices?: { message?: { content?: string } }[] };
+  return data.choices?.[0]?.message?.content ?? null;
+}
+
+async function callAnthropic(
+  history: { speaker: string; text: string }[],
+  lastUtterance: string,
+  language?: string
+): Promise<string | null> {
+  const res = await fetch(
+    `${config.llmBaseUrl || "https://api.anthropic.com"}/v1/messages`,
+    {
+      method: "POST",
+      headers: {
+        "x-api-key": config.llmApiKey,
+        "anthropic-version": "2023-06-01",
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        model: config.llmModel || "claude-haiku-4-5",
+        temperature: 0.2,
+        max_tokens: 320,
+        system: SYSTEM_PROMPT,
+        messages: [
+          { role: "user", content: USER_PAYLOAD(history, lastUtterance, language) },
+        ],
+      }),
+    }
+  );
+  if (!res.ok) throw new Error(`LLM ${res.status}: ${await res.text().catch(() => "")}`);
+  const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+  const text = data.content?.find((b) => b.type === "text")?.text;
+  if (!text) return null;
+  // Anthropic may wrap JSON in prose; extract the first {...} block.
+  const m = text.match(/\{[\s\S]*\}/);
+  return m ? m[0] : null;
+}
+
+export async function assistWithAi(
+  history: { speaker: string; text: string }[],
+  lastUtterance: string,
+  language?: string
+): Promise<AiAssist | null> {
+  if (!config.llmApiKey) return null;
+  const content =
+    config.llmProvider === "anthropic"
+      ? await callAnthropic(history, lastUtterance, language)
+      : await callOpenAiCompatible(history, lastUtterance, language);
+  if (!content) return null;
+  return parseAiJson(content);
 }
