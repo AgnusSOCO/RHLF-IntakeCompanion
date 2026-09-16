@@ -101,6 +101,11 @@ export class Hub {
         if (msg.type === "pause" && typeof msg.paused === "boolean") {
           e.pipeline?.setPaused(msg.paused);
           e.companion?.send(JSON.stringify({ type: "pause", paused: msg.paused }));
+        } else if (msg.type === "feedback") {
+          // guidance quality signal - ids only, never transcript content
+          console.log(
+            `[feedback] ext=${extensionId} id=${msg.objectionId} kind=${msg.kind} helpful=${msg.helpful}`
+          );
         }
       } catch {
         /* ignore malformed control */
