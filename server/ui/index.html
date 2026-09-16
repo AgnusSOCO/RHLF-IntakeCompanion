@@ -1,0 +1,125 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>RHLF Intake Assistant (PoC)</title>
+<style>
+  :root { font-family: system-ui, sans-serif; }
+  body { margin: 0; display: flex; flex-direction: column; height: 100vh; background: #0f141a; color: #e6edf3; }
+  header { padding: 10px 14px; background: #161c24; display: flex; gap: 12px; align-items: center; }
+  header h1 { font-size: 15px; margin: 0; font-weight: 600; }
+  .dot { width: 9px; height: 9px; border-radius: 50%; background: #666; }
+  .dot.on { background: #2ea043; } .dot.off { background: #888; } .dot.call { background: #d29922; }
+  #status { font-size: 12px; color: #9da7b3; }
+  #pause { margin-left: auto; padding: 4px 12px; border: 1px solid #444; background: #222; color: #e6edf3; border-radius: 6px; cursor: pointer; }
+  #pause.paused { background: #9e2a2b; border-color: #9e2a2b; }
+  #transcript { flex: 1; overflow-y: auto; padding: 12px 14px; font-size: 13px; line-height: 1.55; }
+  .line { margin: 2px 0; }
+  .who { font-weight: 600; margin-right: 6px; }
+  .who.caller { color: #79c0ff; } .who.agent { color: #7ee787; }
+  .interim { opacity: 0.45; }
+  #suggestions { border-top: 1px solid #2a323d; background: #141a22; padding: 10px 14px; max-height: 38%; overflow-y: auto; }
+  .card { border: 1px solid #2a323d; border-left: 3px solid #d29922; border-radius: 8px; padding: 10px 12px; margin: 8px 0; background: #1a222c; }
+  .card.escalate { border-left-color: #f85149; }
+  .card h3 { margin: 0 0 6px; font-size: 13px; }
+  .card .resp { font-size: 13px; }
+  .card .fu { font-size: 12px; color: #9da7b3; margin-top: 6px; }
+  .card .matched { font-size: 11px; color: #6e7681; margin-top: 6px; font-style: italic; }
+</style>
+</head>
+<body>
+<header>
+  <span id="connDot" class="dot off"></span>
+  <h1>Intake Assistant <span id="status">disconnected</span></h1>
+  <button id="pause">Pause capture</button>
+</header>
+<div id="transcript"></div>
+<div id="suggestions"></div>
+<script>
+const params = new URLSearchParams(location.search);
+const extensionId = params.get("extensionId");
+const token = params.get("token");
+const statusEl = document.getElementById("status");
+const dot = document.getElementById("connDot");
+const transcriptEl = document.getElementById("transcript");
+const suggEl = document.getElementById("suggestions");
+const pauseBtn = document.getElementById("pause");
+
+if (!extensionId || !token) {
+  statusEl.textContent = "missing ?extensionId= & ?token=";
+  throw new Error("missing params");
+}
+
+const ws = new WebSocket(`${location.protocol === "https:" ? "wss" : "ws"}://${location.host}/ui?extensionId=${extensionId}&token=${token}`);
+let interimEls = {};
+let paused = false;
+
+ws.onopen = () => { dot.className = "dot on"; statusEl.textContent = `ext ${extensionId}`; };
+ws.onclose = () => { dot.className = "dot off"; statusEl.textContent = "disconnected"; };
+
+pauseBtn.onclick = () => {
+  paused = !paused;
+  pauseBtn.classList.toggle("paused", paused);
+  pauseBtn.textContent = paused ? "Resume capture" : "Pause capture";
+  ws.send(JSON.stringify({ type: "pause", paused }));
+};
+
+ws.onmessage = (ev) => {
+  const m = JSON.parse(ev.data);
+  if (m.type === "callStart") {
+    dot.className = "dot call";
+    statusEl.textContent = `live call ${m.telephonySessionId.slice(-8)}`;
+    interimEls = {};
+  } else if (m.type === "callEnd") {
+    dot.className = "dot on";
+    statusEl.textContent = "call ended";
+    interimEls = {};
+  } else if (m.type === "transcript") {
+    renderTranscript(m);
+  } else if (m.type === "suggestion") {
+    renderSuggestion(m);
+  } else if (m.type === "stt-error") {
+    statusEl.textContent = "STT: " + m.message;
+  }
+};
+
+function renderTranscript(m) {
+  const key = m.speaker;
+  if (!m.isFinal) {
+    let el = interimEls[key];
+    if (!el) {
+      el = document.createElement("div");
+      el.className = "line interim";
+      el.innerHTML = `<span class="who ${m.speaker}">${m.speaker}</span><span class="txt"></span>`;
+      transcriptEl.appendChild(el);
+      interimEls[key] = el;
+    }
+    el.querySelector(".txt").textContent = m.text;
+  } else {
+    delete interimEls[key];
+    const el = document.createElement("div");
+    el.className = "line";
+    el.innerHTML = `<span class="who ${m.speaker}">${m.speaker}</span><span class="txt"></span>`;
+    el.querySelector(".txt").textContent = m.text;
+    transcriptEl.appendChild(el);
+  }
+  // drop stale interim lines of same speaker
+  [...transcriptEl.querySelectorAll(".interim")].forEach((n) => {
+    if (!Object.values(interimEls).includes(n)) n.remove();
+  });
+  transcriptEl.scrollTop = transcriptEl.scrollHeight;
+}
+
+function renderSuggestion(s) {
+  const card = document.createElement("div");
+  card.className = "card" + (s.escalate ? " escalate" : "");
+  card.innerHTML = `
+    <h3>${s.escalate ? "Escalate — " : ""}${s.title} <small>(${s.language})</small></h3>
+    <div class="resp">${s.response}</div>
+    <div class="fu">Ask: ${s.followUp}</div>
+    <div class="matched">"${s.matchedText}"</div>`;
+  suggEl.prepend(card);
+}
+</script>
+</body>
+</html>

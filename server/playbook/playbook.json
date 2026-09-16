@@ -1,0 +1,119 @@
+{
+  "objections": [
+    {
+      "id": "cost",
+      "title": "Worried about cost",
+      "patterns": [
+        "how much does it cost",
+        "can't afford",
+        "cannot afford",
+        "cuánto cuesta",
+        "no puedo pagar",
+        "no tengo dinero"
+      ],
+      "responses": {
+        "en": "There's no upfront cost to speak with us, and if we take your case you don't pay anything unless we recover money for you.",
+        "es": "No hay ningún costo por hablar con nosotros, y si tomamos su caso, usted no paga nada a menos que recuperemos dinero para usted."
+      },
+      "followUp": {
+        "en": "Would you like me to explain how the consultation works?",
+        "es": "¿Le gustaría que le explique cómo funciona la consulta?"
+      }
+    },
+    {
+      "id": "think",
+      "title": "Wants time to think",
+      "patterns": [
+        "need to think about it",
+        "think it over",
+        "pensarlo",
+        "necesito pensar",
+        "call you back"
+      ],
+      "responses": {
+        "en": "Of course — take whatever time you need. If it helps, I can schedule a specific time for us to follow up so you don't have to call back.",
+        "es": "Por supuesto — tómese el tiempo que necesite. Si le ayuda, puedo programar una hora específica para darle seguimiento."
+      },
+      "followUp": {
+        "en": "What day and time work best for a quick follow-up?",
+        "es": "¿Qué día y hora le convienen para una llamada de seguimiento?"
+      }
+    },
+    {
+      "id": "family",
+      "title": "Wants to consult family",
+      "patterns": [
+        "talk to my husband",
+        "talk to my wife",
+        "ask my family",
+        "hablar con mi familia",
+        "consultar con"
+      ],
+      "responses": {
+        "en": "That makes sense — this is an important decision. While you're here, can I get a few basics so your file is ready if you decide to move forward?",
+        "es": "Lo entiendo — es una decisión importante. Mientras estamos aquí, ¿puedo obtener algunos datos básicos para tener su archivo listo?"
+      },
+      "followUp": {
+        "en": "Could I get your name and the best number to reach you?",
+        "es": "¿Me podría dar su nombre y el mejor número para contactarle?"
+      }
+    },
+    {
+      "id": "has-attorney",
+      "title": "Already has an attorney",
+      "patterns": [
+        "already have a lawyer",
+        "already have an attorney",
+        "ya tengo abogado",
+        "ya tengo un abogado"
+      ],
+      "responses": {
+        "en": "Understood. Just so I note it correctly — have you already signed a retainer with them, or are you still deciding?",
+        "es": "Entendido. Solo para anotarlo correctamente — ¿ya firmó un contrato con ellos, o todavía está decidiendo?"
+      },
+      "followUp": {
+        "en": "Would you like a second opinion on your case at no cost?",
+        "es": "¿Le gustaría una segunda opinión sobre su caso sin costo?"
+      }
+    },
+    {
+      "id": "overwhelmed",
+      "title": "Overwhelmed / distressed",
+      "patterns": [
+        "can't do this right now",
+        "too much right now",
+        "overwhelmed",
+        "no puedo ahora",
+        "estoy abrumado",
+        "estoy abrumada"
+      ],
+      "responses": {
+        "en": "I hear you, and I'm sorry you're dealing with this. There's no pressure — we can take this one small step at a time.",
+        "es": "Le escucho, y lamento que esté pasando por esto. No hay presión — podemos avanzar paso a paso."
+      },
+      "followUp": {
+        "en": "Would it be easier if I asked just a few short questions?",
+        "es": "¿Sería más fácil si le hago solo unas preguntas cortas?"
+      },
+      "escalate": true
+    },
+    {
+      "id": "not-sure-case",
+      "title": "Unsure they have a case",
+      "patterns": [
+        "don't know if i have a case",
+        "not sure if i have a case",
+        "no sé si tengo caso",
+        "no se si tengo un caso"
+      ],
+      "responses": {
+        "en": "That's exactly what the free consultation is for — a quick conversation can tell us whether it's worth pursuing.",
+        "es": "Para eso es precisamente la consulta gratuita — una conversación breve puede decirnos si vale la pena seguir adelante."
+      },
+      "followUp": {
+        "en": "Can you tell me briefly what happened?",
+        "es": "¿Me puede contar brevemente qué pasó?"
+      }
+    }
+  ]
+}
