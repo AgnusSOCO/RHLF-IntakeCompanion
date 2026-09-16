@@ -150,6 +150,9 @@ export class Hub {
       console.error(`[stt] ext=${extensionId}: ${err.message}`);
       this.broadcastUi(extensionId, { type: "stt-error", message: err.message });
     });
+    pipeline.bus.on("assist-thinking", () =>
+      this.broadcastUi(extensionId, { type: "assist-thinking" })
+    );
     pipeline.bus.on("paused", (p) => this.broadcastUi(extensionId, { type: "paused", paused: p }));
   }
 

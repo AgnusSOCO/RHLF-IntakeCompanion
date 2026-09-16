@@ -47,6 +47,10 @@ off-call audio is recorded.
 Deployed to Railway (`railway up` from `server/`). Env vars on the service:
 
 - `DEEPGRAM_API_KEY` — required for transcription
+- `LLM_API_KEY` + `LLM_BASE_URL` + `LLM_MODEL` — AI assist for questions/objections
+  not covered by the playbook. Any OpenAI-compatible endpoint works; Groq
+  (`https://api.groq.com/openai/v1`, `llama-3.1-8b-instant`) is the low-latency
+  option. Without a key, only the deterministic playbook runs.
 - `AGENT_TOKEN` — shared PoC token agents enter on first run (replace with SSO/per-agent auth for production)
 - `DEV_EVENTS=1` — enables `POST /dev/call-event` for testing without RingCentral; unset when real RC credentials are wired
 - `PUBLIC_URL` + `RC_*` — needed for real RingEX telephony events

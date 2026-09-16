@@ -115,5 +115,95 @@
         "es": "¿Me puede contar brevemente qué pasó?"
       }
     }
+  ],
+  "faqs": [
+    {
+      "id": "case-worth",
+      "title": "How much is my case worth?",
+      "patterns": [
+        "how much is my case worth",
+        "how much could i get",
+        "how much money",
+        "cuánto vale mi caso",
+        "cuánto puedo recibir"
+      ],
+      "answers": {
+        "en": "Every case is different — it depends on the injuries, medical treatment, and who's at fault. That's exactly what an attorney reviews in the free consultation.",
+        "es": "Cada caso es diferente — depende de las lesiones, el tratamiento médico y quién tuvo la culpa. Eso es exactamente lo que un abogado revisa en la consulta gratuita."
+      }
+    },
+    {
+      "id": "how-long",
+      "title": "How long will my case take?",
+      "patterns": [
+        "how long will it take",
+        "how long does a case take",
+        "cuánto tiempo toma",
+        "cuánto tiempo dura"
+      ],
+      "answers": {
+        "en": "It varies — some cases resolve in months, more complex ones take longer. Once an attorney reviews your situation they can give you a better estimate.",
+        "es": "Varía — algunos casos se resuelven en meses, los más complejos toman más tiempo. Una vez que un abogado revise su situación podrá darle un mejor estimado."
+      }
+    },
+    {
+      "id": "medical-bills",
+      "title": "Who pays my medical bills?",
+      "patterns": [
+        "who pays my medical bills",
+        "medical bills",
+        "hospital bill",
+        "facturas médicas",
+        "cuentas del hospital"
+      ],
+      "answers": {
+        "en": "Don't delay treatment because of cost — there are several ways bills can be handled in an injury claim, and the attorney will walk you through the options.",
+        "es": "No retrase su tratamiento por el costo — hay varias formas de manejar las cuentas médicas en un reclamo por lesiones, y el abogado le explicará las opciones."
+      }
+    },
+    {
+      "id": "police-report",
+      "title": "Do I need a police report?",
+      "patterns": [
+        "do i need a police report",
+        "police report",
+        "reporte de policía",
+        "informe policial"
+      ],
+      "answers": {
+        "en": "A report helps, but it's not required to talk to us — we can help you get it. Just tell me what you have.",
+        "es": "Un reporte ayuda, pero no es necesario para hablar con nosotros — podemos ayudarle a obtenerlo. Solo dígame qué documentos tiene."
+      }
+    },
+    {
+      "id": "partly-at-fault",
+      "title": "What if I was partly at fault?",
+      "patterns": [
+        "partly my fault",
+        "partially at fault",
+        "it was partly my fault",
+        "i think it was my fault",
+        "fue mi culpa",
+        "en parte fue mi culpa"
+      ],
+      "answers": {
+        "en": "Even if you think you were partly at fault, you may still have a case — that's a legal question best answered by the attorney. Don't assume you can't recover.",
+        "es": "Aunque crea que tuvo parte de la culpa, es posible que aún tenga un caso — esa es una pregunta legal que mejor responde el abogado. No asuma que no puede recuperar."
+      }
+    },
+    {
+      "id": "what-happens-next",
+      "title": "What happens after this call?",
+      "patterns": [
+        "what happens next",
+        "what happens after",
+        "qué pasa después",
+        "qué sigue"
+      ],
+      "answers": {
+        "en": "I'll gather some basic information, then an attorney reviews your case. If it looks like something we can help with, we'll explain the next steps — no obligation.",
+        "es": "Voy a recopilar información básica y luego un abogado revisará su caso. Si parece algo en lo que podamos ayudar, le explicaremos los siguientes pasos — sin compromiso."
+      }
+    }
   ]
 }
