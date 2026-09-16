@@ -42,8 +42,8 @@ export function createHttpApp(tracker: CallTracker) {
     res.status(200).json({ ok: true });
   });
 
-  // PoC agent UI (vanilla page, no build step).
-  app.use("/ui", express.static(path.resolve(__dirname, "../../ui")));
+  // Agent UI (React app built to ui/dist by `npm --prefix ui run build`).
+  app.use("/ui", express.static(path.resolve(__dirname, "../../ui/dist")));
 
   return app;
 }

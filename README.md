@@ -36,7 +36,7 @@ off-call audio is recorded.
 | Path | Purpose |
 |---|---|
 | `server/` | Node/TS backend: webhook ingestion, call tracking, per-call STT pipelines, objection detection, UI broadcast. Currently deployed on Railway: `https://rhlf-intake-assistant-production.up.railway.app` |
-| `server/ui/` | Vanilla-JS agent sidebar (served by the backend; also embedded in the companion via WebView2) |
+| `server/ui/` | React + Vite + Tailwind agent sidebar (shadcn-style components). Builds to `ui/dist`, served by the backend at `/ui/` and embedded in the companion via WebView2 |
 | `server/playbook/playbook.json` | Firm-approved bilingual objection responses — seed data only, requires attorney review |
 | `desktop/src/IntakeCompanion/` | C#/.NET 8 Windows tray app: process-loopback capture of RingCentral audio (Win build 20348+, endpoint-loopback fallback on Win10) + mic capture via NAudio |
 

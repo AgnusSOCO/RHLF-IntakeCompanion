@@ -1,0 +1,107 @@
+@import "tailwindcss";
+@import "@fontsource-variable/inter";
+
+@theme {
+  --font-sans: "Inter Variable", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-zinc-950 text-zinc-100 antialiased;
+  font-feature-settings: "cv11", "ss01";
+  overscroll-behavior: none;
+}
+
+/* Slim, unobtrusive scrollbars */
+.scroll-slim {
+  scrollbar-width: thin;
+  scrollbar-color: theme("colors.zinc.700") transparent;
+}
+.scroll-slim::-webkit-scrollbar {
+  width: 6px;
+}
+.scroll-slim::-webkit-scrollbar-thumb {
+  background: theme("colors.zinc.700");
+  border-radius: 3px;
+}
+.scroll-slim::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.98);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.card-in {
+  animation: card-in 0.22s cubic-bezier(0.2, 0.8, 0.3, 1);
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+    box-shadow: 0 0 0 0 rgb(239 68 68 / 0.5);
+  }
+  50% {
+    opacity: 0.75;
+    box-shadow: 0 0 0 5px rgb(239 68 68 / 0);
+  }
+}
+.live-pulse {
+  animation: live-pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes caret-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+.caret-blink {
+  animation: caret-blink 0.9s step-end infinite;
+}
+
+@keyframes thinking-shimmer {
+  0% {
+    background-position: -200px 0;
+  }
+  100% {
+    background-position: 200px 0;
+  }
+}
+.thinking-shimmer {
+  background: linear-gradient(
+    90deg,
+    theme("colors.zinc.800") 25%,
+    theme("colors.zinc.700") 50%,
+    theme("colors.zinc.800") 75%
+  );
+  background-size: 200px 100%;
+  animation: thinking-shimmer 1.4s linear infinite;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+.fade-in {
+  animation: fade-in 0.18s ease-out;
+}
