@@ -226,14 +226,14 @@ export class Hub {
       ?.finalize()
       .then((result) => {
         if (!result) return;
-        const { summary, transcript, coverage } = result;
+        const { summary, transcript, coverage, flags } = result;
         if (rec) {
           rec.endedAt = Date.now();
           rec.transcriptSegments = pipeline.finalCount;
           rec.suggestions = pipeline.suggestionCount;
           if (summary) rec.summary = summary;
-          // Persist the full record (transcript + summary + metrics).
-          this.store.saveCall(rec, transcript, coverage);
+          // Persist the full record (transcript + summary + metrics + flags).
+          this.store.saveCall(rec, transcript, coverage, flags);
         }
         if (summary) {
           this.broadcastUi(c.extensionId, {

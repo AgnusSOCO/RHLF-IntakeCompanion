@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { DeepgramLiveStream, SpeakerChannel, TranscriptResult } from "./stt";
 import { ObjectionEngine, Suggestion } from "../assist/objections";
-import { assistWithAi, extractChecklist, summarizeCall, CallSummary } from "../assist/ai";
+import { assistWithAi, extractChecklist, summarizeCall, CallSummary, CallFlag } from "../assist/ai";
 import { INTAKE_CHECKLIST, ChecklistItem } from "../assist/checklist";
 import { config } from "../config";
 
@@ -65,6 +65,7 @@ export class CallPipeline {
   private specEmitted = false; // a suggestion already fired for that utterance
   private specInFlight = false; // spec AI call still resolving
   private seenFlags = new Set<string>(); // dedupe live flags across extraction passes
+  private emittedFlags: CallFlag[] = []; // persisted on the call record
   private lastChecklistItems: ChecklistItem[] = [];
   /** Counters for the per-call record (dashboard metrics). */
   suggestionCount = 0;
@@ -249,6 +250,7 @@ export class CallPipeline {
         );
         if (fresh.length) {
           for (const f of fresh) this.seenFlags.add(f.label.toLowerCase());
+          this.emittedFlags.push(...fresh);
           this.bus.emit("flags", fresh);
         }
       })
@@ -260,6 +262,7 @@ export class CallPipeline {
     summary: CallSummary | null;
     transcript: { speaker: string; text: string }[];
     coverage: { covered: number; total: number };
+    flags: CallFlag[];
   } | null> {
     if (this.finalized) return null;
     this.finalized = true;
@@ -273,7 +276,7 @@ export class CallPipeline {
       total: this.lastChecklistItems.length || INTAKE_CHECKLIST.length,
     };
     this.bus.removeAllListeners();
-    return { summary, transcript: this.fullTranscript, coverage };
+    return { summary, transcript: this.fullTranscript, coverage, flags: this.emittedFlags };
   }
 
   sendAudio(channel: SpeakerChannel, pcm: Buffer): void {

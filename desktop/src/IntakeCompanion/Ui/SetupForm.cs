@@ -33,7 +33,7 @@ internal sealed class SetupForm : Form
 
         _server = AddRow(layout, "Server", config.Server, 0);
         _extension = AddRow(layout, "Extension", config.Extension ?? "", 1);
-        _token = AddRow(layout, "Agent token", config.Token ?? "", 2);
+        _token = AddRow(layout, "Pairing code", config.Token ?? "", 2);
         _name = AddRow(layout, "Your name", config.Name ?? "", 3);
 
         var start = new Button { Text = "Save && Start", Dock = DockStyle.Fill, Height = 30 };
@@ -41,8 +41,11 @@ internal sealed class SetupForm : Form
         {
             if (string.IsNullOrWhiteSpace(_extension.Text) || string.IsNullOrWhiteSpace(_token.Text))
             {
-                MessageBox.Show("Extension and agent token are required.", "Setup",
-                    MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                MessageBox.Show(
+                    "Extension and pairing code are required.\n\n" +
+                    "Get a pairing code from your supervisor dashboard\n" +
+                    "(Live calls → Pair agent), or enter an agent token.",
+                    "Setup", MessageBoxButtons.OK, MessageBoxIcon.Warning);
                 return;
             }
             _config.Server = _server.Text.Trim();

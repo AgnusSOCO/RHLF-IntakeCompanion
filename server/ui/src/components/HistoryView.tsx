@@ -15,6 +15,14 @@ import {
 import { cn, formatDuration } from "../lib/utils";
 import type { HistoryCall } from "../lib/types";
 
+const DISPOSITION_LABELS: Record<string, { label: string; cls: string }> = {
+  signed: { label: "Signed", cls: "border-emerald-300 bg-emerald-50 text-emerald-700" },
+  callback: { label: "Callback", cls: "border-sky-300 bg-sky-50 text-sky-700" },
+  attorney_review: { label: "Atty review", cls: "border-violet-300 bg-violet-50 text-violet-700" },
+  not_qualified: { label: "Not qualified", cls: "border-zinc-300 bg-zinc-100 text-zinc-600" },
+  spam: { label: "Spam", cls: "border-red-300 bg-red-50 text-red-700" },
+};
+
 type Range = "today" | "7d" | "30d" | "all";
 
 const RANGES: { id: Range; label: string }[] = [
@@ -84,6 +92,22 @@ function CallRow({ call }: { call: HistoryCall }) {
           )}
         </div>
         <div className="flex shrink-0 items-center gap-2 text-[10px] text-zinc-500">
+          {call.disposition && DISPOSITION_LABELS[call.disposition] && (
+            <span
+              className={cn(
+                "rounded-full border px-1.5 py-0.5 font-medium",
+                DISPOSITION_LABELS[call.disposition].cls
+              )}
+            >
+              {DISPOSITION_LABELS[call.disposition].label}
+            </span>
+          )}
+          {call.flags?.some((f) => f.severity === "alert") && (
+            <span className="rounded-full border border-red-300 bg-red-50 px-1.5 py-0.5 font-medium text-red-700">
+              {call.flags.filter((f) => f.severity === "alert").length} alert
+              {call.flags.filter((f) => f.severity === "alert").length > 1 ? "s" : ""}
+            </span>
+          )}
           {coveragePct !== null && (
             <span
               className="flex items-center gap-1"
@@ -116,6 +140,23 @@ function CallRow({ call }: { call: HistoryCall }) {
 
       {open && (
         <div className="space-y-2.5 border-t border-zinc-100 px-3.5 py-3">
+          {call.flags && call.flags.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {call.flags.map((f, i) => (
+                <span
+                  key={i}
+                  className={cn(
+                    "rounded-full border px-2 py-0.5 text-[10.5px] font-medium",
+                    f.severity === "alert"
+                      ? "border-red-300 bg-red-50 text-red-700"
+                      : "border-amber-300 bg-amber-50 text-amber-700"
+                  )}
+                >
+                  {f.label}
+                </span>
+              ))}
+            </div>
+          )}
           {s?.fields && Object.values(s.fields).some((v) => v?.trim()) && (
             <dl className="grid grid-cols-2 gap-x-3 gap-y-1 rounded-md border border-zinc-200 bg-zinc-50 px-3 py-2">
               {Object.entries(s.fields)

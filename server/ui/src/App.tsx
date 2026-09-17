@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { History, Lightbulb, Radio, ShieldAlert } from "lucide-react";
 import { CallBanner } from "./components/CallBanner";
 import { ChecklistStrip } from "./components/ChecklistStrip";
+import { DispositionBar } from "./components/DispositionBar";
 import { FlagStrip } from "./components/FlagStrip";
 import { GuidanceCard, ThinkingCard } from "./components/GuidanceCard";
 import { Header } from "./components/Header";
@@ -110,6 +111,15 @@ export default function App() {
           <div className="scroll-slim max-h-[42%] shrink-0 overflow-y-auto px-4 pb-2 pt-2">
             {state.thinking && <ThinkingCard />}
             {state.summary && <SummaryCard summary={state.summary} />}
+            {state.summary && !state.call.active && (
+              <div className="mt-2">
+                <DispositionBar
+                  sessionId={state.summary.sessionId}
+                  extensionId={extensionId}
+                  token={token}
+                />
+              </div>
+            )}
             <div className="mt-2 flex flex-col gap-2">
               {state.cards.map((c, i) => (
                 <GuidanceCard

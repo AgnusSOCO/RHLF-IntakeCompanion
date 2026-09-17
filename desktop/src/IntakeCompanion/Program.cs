@@ -1,4 +1,5 @@
 using Rhlf.IntakeCompanion.Audio;
+using Rhlf.IntakeCompanion.Net;
 using Rhlf.IntakeCompanion.Ui;
 
 namespace Rhlf.IntakeCompanion;
@@ -58,16 +59,39 @@ internal static class Program
         cfg.Server = GetArg("--server") ?? cfg.Server;
         cfg.Extension = GetArg("--extension") ?? cfg.Extension;
         cfg.Token = GetArg("--token") ?? cfg.Token;
+        var pairCode = GetArg("--code");
         cfg.Name = GetArg("--name") ?? cfg.Name;
         cfg.ProcessName = GetArg("--process-name") ?? cfg.ProcessName;
         cfg.LoopbackMode = GetArg("--loopback-mode") ?? cfg.LoopbackMode;
 
-        if (cfg.Extension is null || cfg.Token is null)
+        if (cfg.Extension is null || (cfg.Token is null && pairCode is null))
         {
             using var setup = new SetupForm(cfg);
             if (setup.ShowDialog() != DialogResult.OK) return 1;
         }
         cfg.Save(); // persists CLI overrides too, so the next double-click just works
+
+        // A 6-digit secret is a one-time pairing code — exchange it for the
+        // durable per-extension token before connecting.
+        var secret = pairCode ?? cfg.Token;
+        if (secret is not null && Pairing.LooksLikeCode(secret))
+        {
+            var paired = Pairing.ExchangeAsync(cfg.Server, cfg.Extension!, secret)
+                .GetAwaiter().GetResult();
+            if (paired is null)
+            {
+                cfg.Token = null; // don't persist a dead code — next run re-shows setup
+                cfg.Save();
+                MessageBox.Show(
+                    "That pairing code is invalid or expired.\n" +
+                    "Get a fresh code from the supervisor dashboard (Live calls → Pair agent).",
+                    "Pairing failed", MessageBoxButtons.OK, MessageBoxIcon.Warning);
+                return 1;
+            }
+            cfg.Token = paired.Value.Token;
+            if (paired.Value.Name is not null) cfg.Name ??= paired.Value.Name;
+            cfg.Save();
+        }
 
         using var controller = new CompanionController(
             cfg.Server, cfg.Extension!, cfg.Token!, cfg.ProcessName, cfg.LoopbackMode, cfg.Name);

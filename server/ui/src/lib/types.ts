@@ -60,6 +60,8 @@ export interface HistoryCall {
   transcript?: { speaker: string; text: string }[];
   coverage?: number;
   coverageTotal?: number;
+  flags?: CallFlag[];
+  disposition?: string;
 }
 
 export interface ChecklistItem {

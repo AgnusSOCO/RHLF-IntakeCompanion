@@ -25,9 +25,13 @@ function authParams(url: URL): { extensionId?: string; ok: boolean } {
   const token = url.searchParams.get("token");
   const extensionId = url.searchParams.get("extensionId") ?? undefined;
   if (!extensionId || !token) return { ok: false };
-  // Per-extension token wins; fall back to the shared agent token.
-  const expected = config.agentTokens.get(extensionId) ?? config.agentToken;
-  return { extensionId, ok: token === expected };
+  // Env-pinned per-extension token wins outright.
+  const envToken = config.agentTokens.get(extensionId);
+  if (envToken) return { extensionId, ok: token === envToken };
+  // A paired (issued) token locks the extension to itself — the shared
+  // AGENT_TOKEN no longer authenticates paired extensions.
+  if (store.verifyAgentToken(extensionId, token)) return { extensionId, ok: true };
+  return { extensionId, ok: !store.hasPairedToken(extensionId) && token === config.agentToken };
 }
 
 server.on("upgrade", (req, socket, head) => {

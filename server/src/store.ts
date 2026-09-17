@@ -1,5 +1,6 @@
+import crypto from "node:crypto";
 import pg from "pg";
-import type { CallSummary } from "./assist/ai";
+import type { CallSummary, CallFlag } from "./assist/ai";
 import type { CallRecord } from "./callLog";
 
 /**
@@ -14,6 +15,7 @@ import type { CallRecord } from "./callLog";
 export interface AgentRow {
   extensionId: string;
   name: string | null;
+  paired?: boolean;
   firstSeen: number;
   lastSeen: number;
 }
@@ -29,8 +31,17 @@ const SCHEMA = `
 CREATE TABLE IF NOT EXISTS agents (
   extension_id TEXT PRIMARY KEY,
   name TEXT,
+  token_hash TEXT,
   first_seen TIMESTAMPTZ NOT NULL DEFAULT now(),
   last_seen TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+ALTER TABLE agents ADD COLUMN IF NOT EXISTS token_hash TEXT;
+CREATE TABLE IF NOT EXISTS pairing_codes (
+  code TEXT PRIMARY KEY,
+  extension_id TEXT NOT NULL,
+  name TEXT,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ
 );
 CREATE TABLE IF NOT EXISTS calls (
   session_id TEXT PRIMARY KEY,
@@ -45,15 +56,28 @@ CREATE TABLE IF NOT EXISTS calls (
   coverage INT NOT NULL DEFAULT 0,
   coverage_total INT NOT NULL DEFAULT 0,
   summary JSONB,
-  transcript JSONB
+  transcript JSONB,
+  flags JSONB,
+  disposition TEXT,
+  disposition_at TIMESTAMPTZ
 );
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS flags JSONB;
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS disposition TEXT;
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS disposition_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS calls_ext_started ON calls (extension_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS calls_caller ON calls (caller_number);
 `;
 
+const PAIRING_TTL_MS = 15 * 60 * 1000;
+
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
+
 export class Store {
   private pool?: pg.Pool;
   private agentNames = new Map<string, string>();
+  private agentTokenHashes = new Map<string, string>();
   private ready = false;
 
   constructor() {
@@ -71,9 +95,12 @@ export class Store {
     try {
       await this.pool.query(SCHEMA);
       const { rows } = await this.pool.query(
-        "SELECT extension_id, name FROM agents WHERE name IS NOT NULL"
+        "SELECT extension_id, name, token_hash FROM agents"
       );
-      for (const r of rows) this.agentNames.set(r.extension_id, r.name);
+      for (const r of rows) {
+        if (r.name) this.agentNames.set(r.extension_id, r.name);
+        if (r.token_hash) this.agentTokenHashes.set(r.extension_id, r.token_hash);
+      }
       this.ready = true;
       console.log(`[store] postgres ready (${this.agentNames.size} named agents)`);
     } catch (e) {
@@ -99,15 +126,16 @@ export class Store {
   async saveCall(
     rec: CallRecord,
     transcript: { speaker: string; text: string }[],
-    coverage: { covered: number; total: number }
+    coverage: { covered: number; total: number },
+    flags: CallFlag[] = []
   ): Promise<void> {
     if (!this.ready) return;
     await this.pool!.query(
       `INSERT INTO calls
         (session_id, extension_id, caller_number, started_at, ended_at,
          transcript_segments, suggestions, helpful, unhelpful,
-         coverage, coverage_total, summary, transcript)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+         coverage, coverage_total, summary, transcript, flags)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
        ON CONFLICT (session_id) DO UPDATE SET
          ended_at = EXCLUDED.ended_at,
          transcript_segments = EXCLUDED.transcript_segments,
@@ -117,7 +145,8 @@ export class Store {
          coverage = EXCLUDED.coverage,
          coverage_total = EXCLUDED.coverage_total,
          summary = EXCLUDED.summary,
-         transcript = EXCLUDED.transcript`,
+         transcript = EXCLUDED.transcript,
+         flags = EXCLUDED.flags`,
       [
         rec.sessionId,
         rec.extensionId,
@@ -132,8 +161,82 @@ export class Store {
         coverage.total,
         rec.summary ? JSON.stringify(rec.summary) : null,
         JSON.stringify(transcript),
+        JSON.stringify(flags),
       ]
     ).catch((e) => console.error("[store] saveCall:", e.message));
+  }
+
+  /**
+   * Admin mints a one-time pairing code for an extension. The agent enters it
+   * in the companion setup dialog; /api/pair/exchange trades it for a token.
+   */
+  async createPairingCode(
+    extensionId: string,
+    name?: string
+  ): Promise<{ code: string; expiresAt: number } | null> {
+    if (!this.ready) return null;
+    const code = crypto.randomInt(100000, 999999).toString();
+    const expiresAt = Date.now() + PAIRING_TTL_MS;
+    await this.upsertAgent(extensionId, name);
+    await this.pool!.query(
+      `INSERT INTO pairing_codes (code, extension_id, name, expires_at)
+       VALUES ($1, $2, $3, $4)`,
+      [code, extensionId, name ?? null, new Date(expiresAt)]
+    ).catch((e) => console.error("[store] createPairingCode:", e.message));
+    return { code, expiresAt };
+  }
+
+  /**
+   * Burn a pairing code -> mint a per-extension token. Returns the token
+   * (shown once to the companion) or null on invalid/expired/used code.
+   */
+  async exchangePairingCode(
+    extensionId: string,
+    code: string
+  ): Promise<{ token: string; name: string | null } | null> {
+    if (!this.ready) return null;
+    const { rows } = await this.pool!.query(
+      `UPDATE pairing_codes SET used_at = now()
+       WHERE code = $1 AND extension_id = $2
+         AND used_at IS NULL AND expires_at > now()
+       RETURNING name`,
+      [code.trim(), extensionId]
+    );
+    if (rows.length === 0) return null;
+    const token = crypto.randomBytes(24).toString("base64url");
+    const hash = hashToken(token);
+    this.agentTokenHashes.set(extensionId, hash);
+    await this.pool!.query(
+      `UPDATE agents SET token_hash = $1 WHERE extension_id = $2`,
+      [hash, extensionId]
+    );
+    return { token, name: rows[0].name ?? this.agentNames.get(extensionId) ?? null };
+  }
+
+  /** Per-extension token issued via pairing. Env AGENT_TOKENS still wins. */
+  verifyAgentToken(extensionId: string, token: string): boolean {
+    const hash = this.agentTokenHashes.get(extensionId);
+    return Boolean(hash) && hash === hashToken(token);
+  }
+
+  /** True once an extension has been paired — shared token then stops working. */
+  hasPairedToken(extensionId: string): boolean {
+    return this.agentTokenHashes.has(extensionId);
+  }
+
+  /** Agent dispositions their own call (signed / callback / etc). */
+  async setDisposition(
+    sessionId: string,
+    extensionId: string,
+    disposition: string
+  ): Promise<boolean> {
+    if (!this.ready) return false;
+    const { rowCount } = await this.pool!.query(
+      `UPDATE calls SET disposition = $1, disposition_at = now()
+       WHERE session_id = $2 AND extension_id = $3`,
+      [disposition, sessionId, extensionId]
+    );
+    return (rowCount ?? 0) > 0;
   }
 
   /** Prior call count + most recent call for this caller number. */
@@ -156,7 +259,13 @@ export class Store {
     }
   }
 
-  private rowToRecord(r: any): CallRecord & { transcript?: any; coverage?: number; coverageTotal?: number } {
+  private rowToRecord(r: any): CallRecord & {
+    transcript?: any;
+    coverage?: number;
+    coverageTotal?: number;
+    flags?: CallFlag[];
+    disposition?: string;
+  } {
     return {
       sessionId: r.session_id,
       extensionId: r.extension_id,
@@ -170,6 +279,8 @@ export class Store {
       transcript: r.transcript ?? undefined,
       coverage: r.coverage,
       coverageTotal: r.coverage_total,
+      flags: r.flags ?? undefined,
+      disposition: r.disposition ?? undefined,
     };
   }
 
@@ -239,6 +350,7 @@ export class Store {
     return rows.map((r) => ({
       extensionId: r.extension_id,
       name: r.name,
+      paired: Boolean(r.token_hash),
       firstSeen: new Date(r.first_seen).getTime(),
       lastSeen: new Date(r.last_seen).getTime(),
     }));

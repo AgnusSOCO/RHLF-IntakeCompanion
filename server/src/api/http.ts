@@ -85,6 +85,51 @@ export function createHttpApp(
   });
 
   /**
+   * Agent pairing (admin mints a one-time code; companion exchanges it):
+   *   POST /api/admin/pair   {extensionId, name?}      -> {code, expiresAt}
+   *   POST /api/pair/exchange {extensionId, code}      -> {token, name}
+   * The exchange endpoint is intentionally unauthed — the code IS the
+   * credential (one-time, 15-min TTL).
+   */
+  app.post("/api/admin/pair", adminAuth, async (req, res) => {
+    const { extensionId, name } = req.body ?? {};
+    if (!extensionId || typeof extensionId !== "string") {
+      return res.status(400).json({ error: "extensionId required" });
+    }
+    const result = await store.createPairingCode(extensionId.trim(), name);
+    if (!result) return res.status(503).json({ error: "no database" });
+    res.json(result);
+  });
+
+  app.post("/api/pair/exchange", async (req, res) => {
+    const { extensionId, code } = req.body ?? {};
+    if (!extensionId || !code) {
+      return res.status(400).json({ error: "extensionId and code required" });
+    }
+    const result = await store.exchangePairingCode(
+      String(extensionId).trim(),
+      String(code)
+    );
+    if (!result) {
+      return res.status(401).json({ error: "invalid or expired pairing code" });
+    }
+    res.json(result);
+  });
+
+  /** Agent dispositions their own call: POST /api/disposition?ext&token {sessionId, disposition} */
+  app.post("/api/disposition", async (req, res) => {
+    const extensionId = agentAuth(req);
+    if (!extensionId) return res.status(401).json({ error: "unauthorized" });
+    const { sessionId, disposition } = req.body ?? {};
+    const allowed = ["signed", "callback", "not_qualified", "spam", "attorney_review"];
+    if (!sessionId || !allowed.includes(disposition)) {
+      return res.status(400).json({ error: `disposition must be one of: ${allowed.join(", ")}` });
+    }
+    const ok = await store.setDisposition(String(sessionId), extensionId, disposition);
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
+  /**
    * Agent self-service history: the companion UI calls this with the same
    * extensionId+token it uses for its WebSocket. An agent only ever sees
    * their own calls.
