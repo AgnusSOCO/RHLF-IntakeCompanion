@@ -54,12 +54,14 @@ Deployed to Railway (`railway up` from `server/`). Env vars on the service:
   (e.g. Groq `https://api.groq.com/openai/v1`, `llama-3.1-8b-instant`). Without a
   key, only the deterministic playbook runs.
 - `AGENT_TOKEN` — shared PoC token agents enter on first run (replace with SSO/per-agent auth for production)
-- `AGENT_TOKENS` — optional per-extension tokens: JSON `{"101":"tok","102":"tok2"}` or CSV `101:tok,102:tok2`. When set for an extension, it overrides `AGENT_TOKEN`.
+- `AGENT_TOKENS` — optional per-extension tokens: JSON `{"101":"tok","102":"tok2"}` or CSV `101:tok,102:tok2`. When set for an extension, it overrides `AGENT_TOKEN`. Recommended for production: it makes `/api/history` per-agent isolation real (with the shared token, any agent token reads any extension's history).
+- `DATABASE_URL` — Postgres connection string (Railway Postgres plugin auto-provides it via `${{Postgres.DATABASE_URL}}`). Persists agents, call records, transcripts, summaries, coverage and feedback across deploys. Without it the service runs in-memory only.
 - `ADMIN_TOKEN` — gates the admin surface for supervisor monitoring / dashboards
   (e.g. the rhlf-ai dashboard):
-  - `GET /api/agents` — live fleet snapshot (per extension: companion connected, UI clients, active call, paused)
-  - `GET /api/calls?limit=N` — recent call records: duration, segment/suggestion counts, feedback tallies, post-call AI summary + extracted fields
-  - `wss://…/admin?token=…` — every agent event (transcripts, suggestions, checklist, call lifecycle) tagged with `extensionId`
+  - `GET /api/agents` — live fleet snapshot + stored agents (name, companion connected, UI clients, active call, paused)
+  - `GET /api/calls?limit=N` — recent call records: duration, segment/suggestion counts, feedback tallies, intake coverage, post-call AI summary + fields + coaching note
+  - `GET /api/performance` — per-agent aggregates (calls, avg duration, suggestions, helpful %, avg intake coverage)
+  - `wss://…/admin?token=…` — every agent event (transcripts, suggestions, checklist, flags, call lifecycle) tagged with `extensionId`
 - `DEV_EVENTS=1` — enables `POST /dev/call-event` for testing without RingCentral; unset when real RC credentials are wired
 - `PUBLIC_URL` + `RC_*` — needed for real RingEX telephony events
 
@@ -80,7 +82,38 @@ credentials + `PUBLIC_URL` (e.g. an HTTPS tunnel) enable real call events.
 Open `https://rhlf-intake-assistant-production.up.railway.app/ui/?extensionId=<ext>&token=<AGENT_TOKEN>`
 (or the same URL on your local server when running `npm run dev`).
 
-### Windows companion (build on Windows)
+Two tabs:
+
+- **Live call** — transcript, guidance cards, intake checklist with an
+  "ask next" hint, live risk flags (red = needs attention now, amber = context),
+  repeat-caller badge, post-call summary + coaching note.
+- **History** — the agent's own past calls, grouped by day (Today / Yesterday /
+  date), filterable by range (Today / 7d / 30d / All) and full-text search
+  (caller number, summary, transcript). Each row expands to fields, key
+  moments, coaching, and the full transcript.
+
+Agent-facing endpoint: `GET /api/history?extensionId=&token=&from=<ms>&to=<ms>&q=`
+— scoped to the calling agent's extension only.
+
+### Features during a call
+
+- Speculative assist — suggestions start on stable interim transcripts, so
+  playbook hits and AI drafts often land before the final transcript.
+- Live flags — medical emergency, already-represented, minor involved, DNC
+  requests, recorded-statement admissions, uninsured/hit-and-run, and similar
+  signals surface as chips while the caller is still speaking.
+- Intake checklist — 11 standard PI fields fill in as they're covered; the
+  first uncovered field surfaces a suggested question to ask next.
+- Repeat-caller detection — the call banner shows "Called Nx before" when the
+  number has prior records.
+- Post-call — AI summary, structured fields, key moments, and a coaching note,
+  all persisted and shown to the agent plus the dashboard.
+
+### Windows companion
+
+CI builds the exe on every push that touches `desktop/` — grab the
+`IntakeCompanion` artifact from the latest "Build Windows companion" workflow
+run on GitHub. Or build locally:
 
 ```powershell
 cd desktop\src\IntakeCompanion
@@ -90,10 +123,11 @@ dotnet publish -c Release
 
 The companion is a **WinForms tray app** that can simply be double-clicked.
 On first run a setup dialog asks for extension + agent token (server defaults
-to the hosted backend); settings persist to
+to the hosted backend) plus an optional display name shown in the dashboard;
+settings persist to
 `%APPDATA%\RHLF\IntakeCompanion\config.json`. Command-line args
-(`--server/--extension/--token/--process-name/--loopback-mode`) override saved
-values and are re-saved.
+(`--server/--extension/--token/--name/--process-name/--loopback-mode`) override
+saved values and are re-saved.
 
 Closing the window hides it to the system tray (right-click menu: status,
 Open assistant, Pause/Resume capture, Exit). The window embeds the backend
@@ -170,10 +204,11 @@ curl -X POST http://localhost:8080/dev/call-event -H 'content-type: application/
 
 - Webhook delivery requires a public HTTPS endpoint; WebSocket transport or
   RingCentral subscription management can replace it later.
-- Shared `AGENT_TOKEN` is PoC-only; replace with SSO + per-agent auth.
-- No transcript/audio is persisted — by design for now; retention policy TBD.
-- Objection detection is keyword matching; swap in an LLM/classifier after
-  transcript quality is validated.
+- Shared `AGENT_TOKEN` is PoC-only; use `AGENT_TOKENS` per extension or replace
+  with SSO + per-agent auth before production.
+- Transcripts + summaries persist in Postgres — raw audio is still never
+  stored. A retention/deletion policy for transcript PII is needed before
+  production rollout.
 - `Gone` party status (transfers/monitoring joins) currently ends assistance;
   refine if mid-call transfers must keep assisting.
 - RingCentral mute is client-side: verify on real hardware whether assistant

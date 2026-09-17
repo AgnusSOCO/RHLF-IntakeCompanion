@@ -1,0 +1,30 @@
+name: Build Windows companion
+
+# Builds the single-file Windows exe on every push that touches desktop/.
+# Download the "IntakeCompanion" artifact from the workflow run — no local
+# Windows build needed.
+on:
+  push:
+    branches: [main]
+    paths: ["desktop/**", ".github/workflows/desktop.yml"]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "8.0.x"
+
+      - name: Publish single-file exe
+        working-directory: desktop/src/IntakeCompanion
+        run: dotnet publish -c Release -r win-x64 --self-contained
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: IntakeCompanion
+          path: desktop/src/IntakeCompanion/bin/Release/net8.0-windows/win-x64/publish/
