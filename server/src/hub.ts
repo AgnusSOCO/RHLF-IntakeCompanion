@@ -188,6 +188,9 @@ export class Hub {
       JSON.stringify({ type: "callStart", sessionId: c.telephonySessionId, caller: c.callerNumber })
     );
     const rec = this.callLog.start(c.telephonySessionId, c.extensionId, c.callerNumber);
+    // Persist the row at call start (updated on finalize) so repeat-caller
+    // lookups never race the post-call summary write.
+    this.store.saveCall(rec, [], { covered: 0, total: 0 });
     this.startPipeline(c.extensionId, c.telephonySessionId);
     console.log(`[hub] call started: ext=${c.extensionId} session=${c.telephonySessionId}`);
 
