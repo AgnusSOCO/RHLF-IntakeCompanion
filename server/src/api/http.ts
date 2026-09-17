@@ -16,13 +16,16 @@ function adminAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-/** Agent-scoped auth: extensionId + that extension's token (or shared token). */
-function agentAuth(req: Request): string | null {
+/** Agent-scoped auth: extensionId + that extension's token (paired or shared). */
+function agentAuth(req: Request, store: Store): string | null {
   const extensionId = req.query.extensionId as string | undefined;
   const token = req.query.token as string | undefined;
   if (!extensionId || !token) return null;
-  const expected = config.agentTokens.get(extensionId) ?? config.agentToken;
-  return token === expected ? extensionId : null;
+  const envToken = config.agentTokens.get(extensionId);
+  if (envToken) return token === envToken ? extensionId : null;
+  if (store.verifyAgentToken(extensionId, token)) return extensionId;
+  if (!store.hasPairedToken(extensionId) && token === config.agentToken) return extensionId;
+  return null;
 }
 
 export function createHttpApp(
@@ -118,7 +121,7 @@ export function createHttpApp(
 
   /** Agent dispositions their own call: POST /api/disposition?ext&token {sessionId, disposition} */
   app.post("/api/disposition", async (req, res) => {
-    const extensionId = agentAuth(req);
+    const extensionId = agentAuth(req, store);
     if (!extensionId) return res.status(401).json({ error: "unauthorized" });
     const { sessionId, disposition } = req.body ?? {};
     const allowed = ["signed", "callback", "not_qualified", "spam", "attorney_review"];
@@ -136,7 +139,7 @@ export function createHttpApp(
    *   GET /api/history?extensionId=&token=&from=<ms>&to=<ms>&q=<text>
    */
   app.get("/api/history", async (req, res) => {
-    const extensionId = agentAuth(req);
+    const extensionId = agentAuth(req, store);
     if (!extensionId) return res.status(401).json({ error: "unauthorized" });
     if (!store.enabled) {
       const mine = callLog
