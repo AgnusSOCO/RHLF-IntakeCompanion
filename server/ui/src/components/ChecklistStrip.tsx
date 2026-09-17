@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from "react";
 import { Check, CircleDashed, ClipboardList, MessageCircleQuestion } from "lucide-react";
 import { cn } from "../lib/utils";
 import type { ChecklistItem } from "../lib/types";
@@ -22,9 +23,25 @@ const ASK_NEXT: Record<string, string> = {
  * Updates in the background — the agent glances and knows what to still collect.
  */
 export function ChecklistStrip({ items, callActive }: { items: ChecklistItem[]; callActive: boolean }) {
+  const prevCovered = useRef<Set<string>>(new Set());
+  const [justCovered, setJustCovered] = useState<Set<string>>(new Set());
+
+  // Track which fields flipped to covered so they can pop.
+  useEffect(() => {
+    const now = new Set(items.filter((i) => i.covered).map((i) => i.id));
+    const fresh = new Set([...now].filter((id) => !prevCovered.current.has(id)));
+    prevCovered.current = now;
+    if (fresh.size) {
+      setJustCovered(fresh);
+      const t = window.setTimeout(() => setJustCovered(new Set()), 600);
+      return () => clearTimeout(t);
+    }
+  }, [items]);
+
   if (items.length === 0) return null;
   const covered = items.filter((i) => i.covered).length;
   const nextGap = items.find((i) => !i.covered && i.id !== "employment");
+  const pct = Math.round((covered / items.length) * 100);
   return (
     <div className="border-b border-zinc-200 bg-white px-4 py-2">
       <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
@@ -33,6 +50,12 @@ export function ChecklistStrip({ items, callActive }: { items: ChecklistItem[]; 
         <span className="ml-auto font-normal normal-case tracking-normal tabular-nums text-zinc-400">
           {covered}/{items.length}
         </span>
+      </div>
+      <div className="mb-1.5 h-1 overflow-hidden rounded-full bg-zinc-100">
+        <div
+          className="h-full rounded-full bg-gradient-to-r from-emerald-500 to-emerald-400 transition-all duration-700 ease-out"
+          style={{ width: `${pct}%` }}
+        />
       </div>
       <div className="flex flex-wrap gap-1.5">
         {items.map((item) => (
@@ -44,6 +67,7 @@ export function ChecklistStrip({ items, callActive }: { items: ChecklistItem[]; 
               item.covered
                 ? "border-emerald-300 bg-emerald-50 text-emerald-700"
                 : "border-dashed border-zinc-300 text-zinc-400",
+              justCovered.has(item.id) && "chip-pop",
               !callActive && "opacity-60"
             )}
           >

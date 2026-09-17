@@ -60,38 +60,43 @@ export default function App() {
         onPause={setPaused}
       />
 
-      <div className="flex gap-1 border-b border-zinc-200 bg-white px-4 py-1.5">
-        {(
-          [
-            { id: "live", label: "Live call", icon: Radio },
-            { id: "history", label: "History", icon: History },
-          ] as const
-        ).map(({ id, label, icon: Icon }) => (
-          <button
-            key={id}
-            onClick={() => setTab(id)}
-            className={cn(
-              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11.5px] font-medium transition-colors",
-              tab === id
-                ? "bg-zinc-900 text-white"
-                : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
-            )}
-          >
-            <Icon className="h-3.5 w-3.5" />
-            {label}
-          </button>
-        ))}
+      <div className="border-b border-zinc-200 bg-white px-4 py-1.5">
+        <div className="flex w-fit gap-0.5 rounded-lg bg-zinc-100 p-0.5">
+          {(
+            [
+              { id: "live", label: "Live call", icon: Radio },
+              { id: "history", label: "History", icon: History },
+            ] as const
+          ).map(({ id, label, icon: Icon }) => (
+            <button
+              key={id}
+              onClick={() => setTab(id)}
+              className={cn(
+                "flex items-center gap-1.5 rounded-[6px] px-3.5 py-1.5 text-[11.5px] font-medium transition-all",
+                tab === id
+                  ? "bg-white text-zinc-900 shadow-sm"
+                  : "text-zinc-500 hover:text-zinc-700"
+              )}
+            >
+              <Icon className={cn("h-3.5 w-3.5", id === "live" && state.call.active && tab === "live" && "text-red-600")} />
+              {label}
+            </button>
+          ))}
+        </div>
       </div>
 
       {tab === "history" ? (
-        <HistoryView extensionId={extensionId} token={token} callActive={state.call.active} />
+        <div className="view-in flex min-h-0 flex-1 flex-col" key="history">
+          <HistoryView extensionId={extensionId} token={token} callActive={state.call.active} />
+        </div>
       ) : (
-        <>
+        <div className="view-in flex min-h-0 flex-1 flex-col" key="live">
           <CallBanner
             active={state.call.active}
             callerNumber={state.call.callerNumber}
             startedAt={state.call.startedAt}
             priorCalls={state.call.priorCalls}
+            speaking={state.speaking}
           />
           <FlagStrip flags={state.flags} />
           <ChecklistStrip items={state.checklist} callActive={state.call.active} />
@@ -106,10 +111,11 @@ export default function App() {
             {state.thinking && <ThinkingCard />}
             {state.summary && <SummaryCard summary={state.summary} />}
             <div className="mt-2 flex flex-col gap-2">
-              {state.cards.map((c) => (
+              {state.cards.map((c, i) => (
                 <GuidanceCard
                   key={c.key}
                   card={c}
+                  featured={i === 0}
                   stale={now - c.receivedAt > cardStaleMs}
                   onDismiss={() => dismiss(c.key)}
                   onFeedback={(h) => sendFeedback(c, h)}
@@ -132,7 +138,7 @@ export default function App() {
             interim={state.interim}
             callActive={state.call.active}
           />
-        </>
+        </div>
       )}
 
       <footer className="flex items-center justify-center gap-1.5 border-t border-zinc-200 bg-white px-4 py-1.5 text-[10px] text-zinc-500">

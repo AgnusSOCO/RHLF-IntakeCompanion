@@ -14,39 +14,46 @@ function Bubble({
   language,
   ts,
   interim,
+  firstOfRun,
 }: {
   speaker: Speaker;
   text: string;
   language?: string;
   ts?: number;
   interim?: boolean;
+  /** First bubble in a run of the same speaker — shows avatar + label. */
+  firstOfRun?: boolean;
 }) {
   const isCaller = speaker === "caller";
   return (
     <div className={cn("flex gap-2", !isCaller && "flex-row-reverse")}>
       <div
         className={cn(
-          "mt-4 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[9px] font-bold",
-          isCaller ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"
+          "grid h-6 w-6 shrink-0 place-items-center rounded-full text-[9px] font-bold",
+          firstOfRun && "mt-4",
+          isCaller ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700",
+          !firstOfRun && "invisible"
         )}
       >
         {isCaller ? "C" : "A"}
       </div>
       <div className={cn("min-w-0 max-w-[80%]", !isCaller && "flex flex-col items-end")}>
-        <div
-          className={cn(
-            "mb-0.5 flex items-center gap-1.5 text-[10px] text-zinc-400",
-            !isCaller && "flex-row-reverse"
-          )}
-        >
-          <span className="font-medium text-zinc-500">{isCaller ? "Caller" : "You"}</span>
-          {language === "es" && (
-            <span className="rounded border border-zinc-300 px-1 text-[9px] font-semibold text-zinc-500">
-              ES
-            </span>
-          )}
-          {ts && <span className="tabular-nums">{formatClock(ts)}</span>}
-        </div>
+        {firstOfRun && (
+          <div
+            className={cn(
+              "mb-0.5 flex items-center gap-1.5 text-[10px] text-zinc-400",
+              !isCaller && "flex-row-reverse"
+            )}
+          >
+            <span className="font-medium text-zinc-500">{isCaller ? "Caller" : "You"}</span>
+            {language === "es" && (
+              <span className="rounded border border-zinc-300 px-1 text-[9px] font-semibold text-zinc-500">
+                ES
+              </span>
+            )}
+            {ts && <span className="tabular-nums">{formatClock(ts)}</span>}
+          </div>
+        )}
         <div
           className={cn(
             "rounded-xl px-3 py-2 text-[13px] leading-relaxed",
@@ -107,15 +114,36 @@ export function Transcript({
             </p>
           </div>
         ) : (
-          <div className="flex flex-col gap-3 pb-1">
-            {segments.map((s) => (
-              <Bubble key={s.id} speaker={s.speaker} text={s.text} language={s.language} ts={s.ts} />
+          <div className="flex flex-col gap-1.5 pb-1">
+            {segments.map((s, i) => (
+              <Bubble
+                key={s.id}
+                speaker={s.speaker}
+                text={s.text}
+                language={s.language}
+                ts={s.ts}
+                firstOfRun={i === 0 || segments[i - 1].speaker !== s.speaker}
+              />
             ))}
             {interim.caller && (
-              <Bubble speaker="caller" text={interim.caller.text} language={interim.caller.language} interim />
+              <Bubble
+                speaker="caller"
+                text={interim.caller.text}
+                language={interim.caller.language}
+                interim
+                firstOfRun={segments[segments.length - 1]?.speaker !== "caller"}
+              />
             )}
             {interim.agent && (
-              <Bubble speaker="agent" text={interim.agent.text} language={interim.agent.language} interim />
+              <Bubble
+                speaker="agent"
+                text={interim.agent.text}
+                language={interim.agent.language}
+                interim
+                firstOfRun={
+                  (interim.caller ? "caller" : segments[segments.length - 1]?.speaker) !== "agent"
+                }
+              />
             )}
           </div>
         )}

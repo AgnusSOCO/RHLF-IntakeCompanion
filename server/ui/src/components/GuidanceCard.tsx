@@ -17,20 +17,42 @@ import { Badge } from "./ui/badge";
 import { Button } from "./ui/button";
 
 const KIND_META = {
-  objection: { label: "Objection", Icon: AlertTriangle, accent: "border-l-amber-400" },
-  faq: { label: "FAQ", Icon: MessageCircleQuestion, accent: "border-l-emerald-500" },
-  question: { label: "Question", Icon: MessageCircleQuestion, accent: "border-l-sky-500" },
-  ai: { label: "AI assist", Icon: Sparkles, accent: "border-l-violet-500" },
+  objection: {
+    label: "Objection",
+    Icon: AlertTriangle,
+    accent: "border-l-amber-400",
+    tile: "bg-amber-50 text-amber-600",
+  },
+  faq: {
+    label: "FAQ",
+    Icon: MessageCircleQuestion,
+    accent: "border-l-emerald-500",
+    tile: "bg-emerald-50 text-emerald-600",
+  },
+  question: {
+    label: "Question",
+    Icon: MessageCircleQuestion,
+    accent: "border-l-sky-500",
+    tile: "bg-sky-50 text-sky-600",
+  },
+  ai: {
+    label: "AI assist",
+    Icon: Sparkles,
+    accent: "border-l-violet-500",
+    tile: "bg-violet-50 text-violet-600",
+  },
 } as const;
 
 export function GuidanceCard({
   card,
   stale,
+  featured,
   onDismiss,
   onFeedback,
 }: {
   card: GuidanceItem;
   stale: boolean;
+  featured?: boolean;
   onDismiss: () => void;
   onFeedback: (helpful: boolean) => void;
 }) {
@@ -50,17 +72,20 @@ export function GuidanceCard({
         "card-in rounded-lg border border-zinc-200 border-l-2 bg-white shadow-sm transition-opacity duration-500",
         meta.accent,
         escalate && "border-l-red-500 bg-red-50/60",
+        featured && !stale && "card-featured",
         stale && "opacity-40"
       )}
     >
       {/* title row */}
       <div className="flex items-start gap-2 px-3.5 pt-3">
-        <meta.Icon
+        <div
           className={cn(
-            "mt-0.5 h-4 w-4 shrink-0",
-            escalate ? "text-red-600" : "text-zinc-400"
+            "mt-0.5 grid h-6 w-6 shrink-0 place-items-center rounded-md",
+            escalate ? "bg-red-100 text-red-600" : meta.tile
           )}
-        />
+        >
+          <meta.Icon className="h-3.5 w-3.5" />
+        </div>
         <div className="min-w-0 flex-1">
           <div className="flex flex-wrap items-center gap-1.5">
             <Badge variant={escalate ? "escalate" : card.kind}>{escalate ? "Escalate" : meta.label}</Badge>

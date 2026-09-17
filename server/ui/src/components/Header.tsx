@@ -41,6 +41,11 @@ export function Header({
 
       <div className="ml-auto flex items-center gap-3">
         <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
+          {agentName && conn === "online" && (
+            <span className="grid h-5 w-5 place-items-center rounded-full bg-zinc-900 text-[9px] font-bold text-white">
+              {agentName.split(/\s+/).map((w) => w[0]).slice(0, 2).join("").toUpperCase()}
+            </span>
+          )}
           <span className={cn("h-1.5 w-1.5 rounded-full", c.dot)} />
           <span>
             {conn === "online" && extensionId

@@ -27,6 +27,8 @@ interface State {
   agentName?: string;
   paused: boolean;
   thinking: boolean;
+  /** True while transcript events are actively arriving — drives audio bars. */
+  speaking: boolean;
   segments: TranscriptSegment[];
   interim: Partial<Record<Speaker, Interim>>;
   cards: GuidanceItem[];
@@ -47,6 +49,7 @@ type Action =
   | { t: "callEnd" }
   | { t: "paused"; v: boolean }
   | { t: "thinking" }
+  | { t: "speaking"; v: boolean }
   | { t: "error"; v?: string }
   | { t: "interim"; speaker: Speaker; text: string; language?: string }
   | { t: "final"; speaker: Speaker; text: string; language?: string }
@@ -80,6 +83,7 @@ function reducer(s: State, a: Action): State {
         cards: [],
         checklist: [],
         flags: [],
+        speaking: false,
         summary: undefined,
         thinking: false,
         segments: [],
@@ -97,6 +101,8 @@ function reducer(s: State, a: Action): State {
       return { ...s, paused: a.v };
     case "thinking":
       return s.call.active ? { ...s, thinking: true } : s;
+    case "speaking":
+      return s.speaking === a.v ? s : { ...s, speaking: a.v };
     case "error":
       return { ...s, error: a.v };
     case "interim":
@@ -149,6 +155,7 @@ const initial: State = {
   call: { active: false },
   paused: false,
   thinking: false,
+  speaking: false,
   segments: [],
   interim: {},
   cards: [],
@@ -165,6 +172,12 @@ export function useAssistant(extensionId: string | null, token: string | null) {
     if (!extensionId || !token) return;
     let dead = false;
     let retryTimer: number | undefined;
+    let speakTimer: number | undefined;
+    const pokeSpeaking = () => {
+      dispatch({ t: "speaking", v: true });
+      clearTimeout(speakTimer);
+      speakTimer = window.setTimeout(() => dispatch({ t: "speaking", v: false }), 900);
+    };
 
     const connect = () => {
       if (dead) return;
@@ -220,6 +233,7 @@ export function useAssistant(extensionId: string | null, token: string | null) {
             break;
           case "transcript":
             if (!m.text?.trim()) break;
+            pokeSpeaking();
             if (m.isFinal) {
               dispatch({ t: "final", speaker: m.speaker, text: m.text, language: m.language });
             } else {
@@ -268,6 +282,7 @@ export function useAssistant(extensionId: string | null, token: string | null) {
       dead = true;
       clearInterval(ageTimer);
       clearTimeout(retryTimer);
+      clearTimeout(speakTimer);
       wsRef.current?.close();
     };
   }, [extensionId, token]);
