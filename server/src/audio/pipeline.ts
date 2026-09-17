@@ -31,6 +31,22 @@ const MAX_HISTORY = 12;
 const MAX_AI_IN_FLIGHT = 2;
 const AI_COOLDOWN_MS = 8_000;
 const CHECKLIST_INTERVAL_MS = 12_000;
+// Speculative assist: when a caller interim stops changing for this long we
+// run detection/AI before the final transcript arrives — suggestion lands
+// ~endpointing+LLM sooner, so the agent sees it as the caller finishes.
+const SPEC_STABLE_MS = 450;
+const SPEC_MIN_CHARS = 18;
+
+function normalize(text: string): string {
+  return text.toLowerCase().replace(/[^a-z0-9áéíóúñü\s]/gi, " ").replace(/\s+/g, " ").trim();
+}
+
+/** Same utterance check: either is a prefix of the other beyond a few words. */
+function sameUtterance(a: string, b: string): boolean {
+  if (!a || !b) return false;
+  const [shorter, longer] = a.length <= b.length ? [a, b] : [b, a];
+  return longer.startsWith(shorter) || shorter.startsWith(longer.slice(0, Math.min(40, longer.length)));
+}
 
 export class CallPipeline {
   readonly bus = new EventEmitter();
@@ -43,6 +59,10 @@ export class CallPipeline {
   private extractedFinals = 0;
   private checklistTimer?: NodeJS.Timeout;
   private finalized = false;
+  private specTimer?: NodeJS.Timeout;
+  private specForText = "";    // normalized interim the spec run covered
+  private specEmitted = false; // a suggestion already fired for that utterance
+  private specInFlight = false; // spec AI call still resolving
   /** Counters for the per-call record (dashboard metrics). */
   suggestionCount = 0;
   finalCount = 0;
@@ -80,7 +100,27 @@ export class CallPipeline {
       this.fullTranscript.push(entry);
       this.finalCount++;
     }
-    if (r.speaker !== "caller" || !r.isFinal || this.paused) return;
+    if (r.speaker !== "caller" || this.paused) return;
+
+    if (!r.isFinal) {
+      this.scheduleSpeculative(r);
+      return;
+    }
+
+    clearTimeout(this.specTimer);
+    // If the spec run already covered this utterance — emitted a suggestion,
+    // or an AI call is still resolving (its emit is what the agent sees) —
+    // the final just confirms it. Don't double-fire or burn a second LLM call.
+    const norm = normalize(r.text);
+    if (this.specForText && sameUtterance(this.specForText, norm)) {
+      if (this.specEmitted || this.specInFlight) {
+        this.specEmitted = false;
+        if (!this.specInFlight) this.specForText = "";
+        return;
+      }
+      this.specForText = ""; // spec produced nothing — fall through to normal path
+    }
+    this.specEmitted = false;
 
     const approved = this.objections.detect(r.text, r.language);
     if (approved) {
@@ -95,6 +135,64 @@ export class CallPipeline {
       const flagged = this.objections.flagQuestion(r.text, r.language);
       if (flagged) this.bus.emit("suggestion", flagged);
     }
+  }
+
+  /**
+   * Caller paused mid-utterance: if the interim looks like a complete thought,
+   * run detection now instead of waiting for the endpointing delay + final.
+   */
+  private scheduleSpeculative(r: TranscriptResult): void {
+    clearTimeout(this.specTimer);
+    const norm = normalize(r.text);
+    if (norm.length < SPEC_MIN_CHARS) return;
+    this.specTimer = setTimeout(() => this.runSpeculative(r), SPEC_STABLE_MS);
+  }
+
+  private runSpeculative(r: TranscriptResult): void {
+    if (this.finalized || this.paused) return;
+    const norm = normalize(r.text);
+    this.specForText = norm;
+
+    // Playbook hit on a stable interim: the objection already exists — extra
+    // words won't un-say it. Emit immediately (saves the whole endpointing wait).
+    const approved = this.objections.detect(r.text, r.language);
+    if (approved) {
+      this.specEmitted = true;
+      this.suggestionCount++;
+      this.bus.emit("suggestion", approved);
+      return;
+    }
+
+    if (!config.llmApiKey) return;
+    if (this.aiInFlight >= MAX_AI_IN_FLIGHT || Date.now() - this.lastAiAt < AI_COOLDOWN_MS) return;
+
+    this.aiInFlight++;
+    this.specInFlight = true;
+    this.lastAiAt = Date.now();
+    this.bus.emit("assist-thinking", {});
+    assistWithAi(this.history, r.text, r.language)
+      .then((res) => {
+        if (!res) return;
+        // A different utterance superseded this interim while the call ran.
+        if (!sameUtterance(this.specForText, norm)) return;
+        this.specEmitted = true;
+        this.suggestionCount++;
+        this.bus.emit("suggestion", {
+          kind: "ai",
+          objectionId: "ai",
+          title: res.title,
+          language: r.language === "es" ? "es" : "en",
+          response: res.response,
+          followUp: res.followUp,
+          escalate: res.escalate,
+          matchedText: r.text,
+        } satisfies Suggestion);
+      })
+      .catch((e) => this.bus.emit("stt-error", e))
+      .finally(() => {
+        this.aiInFlight--;
+        this.specInFlight = false;
+      });
   }
 
   private askAi(r: TranscriptResult): void {
@@ -150,6 +248,7 @@ export class CallPipeline {
     if (this.finalized) return null;
     this.finalized = true;
     clearInterval(this.checklistTimer);
+    clearTimeout(this.specTimer);
     this.streams.caller.close();
     this.streams.agent.close();
     const summary = await summarizeCall(this.fullTranscript).catch(() => null);
@@ -174,6 +273,7 @@ export class CallPipeline {
   dispose(): void {
     this.finalized = true;
     clearInterval(this.checklistTimer);
+    clearTimeout(this.specTimer);
     this.streams.caller.close();
     this.streams.agent.close();
     this.bus.removeAllListeners();
