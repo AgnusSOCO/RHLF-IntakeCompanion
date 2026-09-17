@@ -6,8 +6,9 @@ import { config } from "../config";
  * drafts what they can say. The agent is not an attorney — the prompt forbids
  * legal conclusions and requires escalation on sensitive topics.
  *
- * Provider-agnostic: any OpenAI-compatible /chat/completions endpoint works
- * (OpenAI, Groq, etc.). Groq's llama models are a good low-latency option.
+ * Provider-agnostic via LLM_PROVIDER: "anthropic" uses the Messages API,
+ * "openai" hits any OpenAI-compatible /chat/completions endpoint (OpenAI,
+ * Groq, etc.).
  */
 
 export interface AiAssist {
@@ -16,6 +17,12 @@ export interface AiAssist {
   response: string;
   followUp: string;
   escalate: boolean;
+}
+
+export interface CallSummary {
+  summary: string;
+  fields: Record<string, string>;
+  keyMoments: string[];
 }
 
 const SYSTEM_PROMPT = `You are the live-call assistant for Richard Harris Law Firm, a personal-injury law firm in Las Vegas, Nevada. You listen to a real-time intake call and help the INTAKE AGENT — who is not an attorney and cannot give legal advice — respond to caller objections and questions.
@@ -36,6 +43,22 @@ RULES:
 5. NEVER state legal conclusions: do not say the caller has a case, will win, or quote dollar values or firm deadlines. Route judgment calls to "the attorney will review that".
 6. escalate=true for medical emergencies, self-harm statements, criminal matters, immigration status, complaints about the firm, or anything where a wrong answer could harm the caller or the firm. On escalation, "response" should tell the agent what to say briefly (e.g. offer to bring in a supervisor) rather than answering substance.
 7. Output ONLY JSON: {"should_respond": bool, "title": string, "response": string, "follow_up": string, "escalate": bool}`;
+
+const CHECKLIST_PROMPT = `You analyze a live personal-injury intake call transcript for Richard Harris Law Firm (Las Vegas). Determine which standard intake fields have been covered so far — by either speaker.
+
+Fields: caller_identity (name + how to reach them), incident_type (crash/slip-fall/work injury/etc), incident_date (when), location (where), how_it_happened (mechanism/fault context), injuries (what hurts), medical (treatment sought/received), police_report (report filed), insurance (any insurance details mentioned), representation (has/needs other attorney), employment (employer — only for work injuries).
+
+Output ONLY JSON: {"covered": {"<field_id>": "<≤8-word detail from transcript>"}} — include ONLY fields actually discussed. Spanish transcript is fine; write details in English.`;
+
+const SUMMARY_PROMPT = `You summarize a completed personal-injury intake call for Richard Harris Law Firm (Las Vegas). The intake agent is not an attorney.
+
+Output ONLY JSON:
+{
+  "summary": "<2-3 sentence call summary for case notes, English>",
+  "fields": {"caller_name": "", "contact": "", "incident_type": "", "incident_date": "", "location": "", "injuries": "", "insurance": "", "urgent_flags": ""},
+  "key_moments": ["<short label: important statement, objection raised, escalation trigger>"]
+}
+Leave fields empty when not discussed. key_moments max 4, each ≤10 words.`;
 
 const USER_PAYLOAD = (
   history: { speaker: string; text: string }[],
@@ -68,11 +91,39 @@ function parseAiJson(content: string): AiAssist | null {
   };
 }
 
-async function callOpenAiCompatible(
-  history: { speaker: string; text: string }[],
-  lastUtterance: string,
-  language?: string
+/** Shared provider call. Returns the raw text content or null. */
+async function callLlm(
+  system: string,
+  user: string,
+  maxTokens: number
 ): Promise<string | null> {
+  if (config.llmProvider === "anthropic") {
+    const res = await fetch(
+      `${config.llmBaseUrl || "https://api.anthropic.com"}/v1/messages`,
+      {
+        method: "POST",
+        headers: {
+          "x-api-key": config.llmApiKey,
+          "anthropic-version": "2023-06-01",
+          "content-type": "application/json",
+        },
+        body: JSON.stringify({
+          model: config.llmModel || "claude-haiku-4-5",
+          temperature: 0.2,
+          max_tokens: maxTokens,
+          system,
+          messages: [{ role: "user", content: user }],
+        }),
+      }
+    );
+    if (!res.ok) throw new Error(`LLM ${res.status}: ${await res.text().catch(() => "")}`);
+    const data = (await res.json()) as { content?: { type: string; text?: string }[] };
+    const text = data.content?.find((b) => b.type === "text")?.text;
+    if (!text) return null;
+    const m = text.match(/\{[\s\S]*\}/);
+    return m ? m[0] : null;
+  }
+
   const res = await fetch(
     `${config.llmBaseUrl || "https://api.openai.com/v1"}/chat/completions`,
     {
@@ -84,11 +135,11 @@ async function callOpenAiCompatible(
       body: JSON.stringify({
         model: config.llmModel || "gpt-4o-mini",
         temperature: 0.2,
-        max_tokens: 220,
+        max_tokens: maxTokens,
         response_format: { type: "json_object" },
         messages: [
-          { role: "system", content: SYSTEM_PROMPT },
-          { role: "user", content: USER_PAYLOAD(history, lastUtterance, language) },
+          { role: "system", content: system },
+          { role: "user", content: user },
         ],
       }),
     }
@@ -98,50 +149,71 @@ async function callOpenAiCompatible(
   return data.choices?.[0]?.message?.content ?? null;
 }
 
-async function callAnthropic(
-  history: { speaker: string; text: string }[],
-  lastUtterance: string,
-  language?: string
-): Promise<string | null> {
-  const res = await fetch(
-    `${config.llmBaseUrl || "https://api.anthropic.com"}/v1/messages`,
-    {
-      method: "POST",
-      headers: {
-        "x-api-key": config.llmApiKey,
-        "anthropic-version": "2023-06-01",
-        "content-type": "application/json",
-      },
-      body: JSON.stringify({
-        model: config.llmModel || "claude-haiku-4-5",
-        temperature: 0.2,
-        max_tokens: 320,
-        system: SYSTEM_PROMPT,
-        messages: [
-          { role: "user", content: USER_PAYLOAD(history, lastUtterance, language) },
-        ],
-      }),
-    }
-  );
-  if (!res.ok) throw new Error(`LLM ${res.status}: ${await res.text().catch(() => "")}`);
-  const data = (await res.json()) as { content?: { type: string; text?: string }[] };
-  const text = data.content?.find((b) => b.type === "text")?.text;
-  if (!text) return null;
-  // Anthropic may wrap JSON in prose; extract the first {...} block.
-  const m = text.match(/\{[\s\S]*\}/);
-  return m ? m[0] : null;
-}
-
 export async function assistWithAi(
   history: { speaker: string; text: string }[],
   lastUtterance: string,
   language?: string
 ): Promise<AiAssist | null> {
   if (!config.llmApiKey) return null;
-  const content =
-    config.llmProvider === "anthropic"
-      ? await callAnthropic(history, lastUtterance, language)
-      : await callOpenAiCompatible(history, lastUtterance, language);
+  const content = await callLlm(
+    SYSTEM_PROMPT,
+    USER_PAYLOAD(history, lastUtterance, language),
+    320
+  );
   if (!content) return null;
-  return parseAiJson(content);
+  try {
+    return parseAiJson(content);
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Periodic intake-progress check: which standard fields has the call covered?
+ * Runs every ~12s on finals; cheap (small payload) and latency-independent.
+ */
+export async function extractChecklist(
+  history: { speaker: string; text: string }[]
+): Promise<Record<string, string> | null> {
+  if (!config.llmApiKey || history.length < 2) return null;
+  const content = await callLlm(
+    CHECKLIST_PROMPT,
+    JSON.stringify({ transcript: history.slice(-60) }),
+    400
+  );
+  if (!content) return null;
+  try {
+    const parsed = JSON.parse(content) as { covered?: Record<string, string> };
+    return parsed.covered ?? null;
+  } catch {
+    return null;
+  }
+}
+
+/** Post-call wrap: summary + structured fields + key moments for case notes. */
+export async function summarizeCall(
+  history: { speaker: string; text: string }[]
+): Promise<CallSummary | null> {
+  if (!config.llmApiKey || history.length === 0) return null;
+  const content = await callLlm(
+    SUMMARY_PROMPT,
+    JSON.stringify({ transcript: history }),
+    600
+  );
+  if (!content) return null;
+  try {
+    const parsed = JSON.parse(content) as {
+      summary?: string;
+      fields?: Record<string, string>;
+      key_moments?: string[];
+    };
+    if (!parsed.summary) return null;
+    return {
+      summary: parsed.summary,
+      fields: parsed.fields ?? {},
+      keyMoments: parsed.key_moments ?? [],
+    };
+  } catch {
+    return null;
+  }
 }

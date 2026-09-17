@@ -18,6 +18,7 @@ internal sealed class MainForm : Form
     private readonly Label _statusLabel;
     private readonly TextBox _logBox;
     private WebView2? _web;
+    private Icon _appIcon;
     private bool _reallyClose;
 
     public MainForm(CompanionController controller, string uiUrl)
@@ -29,6 +30,11 @@ internal sealed class MainForm : Form
         Width = 420; Height = 680;
         StartPosition = FormStartPosition.CenterScreen;
         ShowIcon = true;
+
+        var iconStream = typeof(MainForm).Assembly
+            .GetManifestResourceStream("Rhlf.IntakeCompanion.app.ico");
+        _appIcon = iconStream is not null ? new Icon(iconStream) : SystemIcons.Application;
+        Icon = _appIcon;
 
         _statusLabel = new Label
         {
@@ -59,7 +65,7 @@ internal sealed class MainForm : Form
 
         _tray = new NotifyIcon
         {
-            Icon = SystemIcons.Application,
+            Icon = _appIcon,
             Text = "RHLF Intake Assistant",
             Visible = true,
             ContextMenuStrip = menu,

@@ -35,6 +35,21 @@ export interface CallStartEvent {
   callerNumber?: string;
 }
 
+export interface ChecklistItem {
+  id: string;
+  label: string;
+  covered: boolean;
+  detail?: string;
+}
+
+export interface SummaryEvent {
+  type: "summary";
+  sessionId: string;
+  summary: string;
+  fields: Record<string, string>;
+  keyMoments: string[];
+}
+
 export type ServerEvent =
   | { type: "hello"; extensionId: string; activeSession: string | null }
   | CallStartEvent
@@ -42,6 +57,8 @@ export type ServerEvent =
   | { type: "state"; capturing?: boolean; mode?: string; paused?: boolean }
   | TranscriptEvent
   | SuggestionEvent
+  | { type: "checklist"; items: ChecklistItem[] }
+  | SummaryEvent
   | { type: "assist-thinking" }
   | { type: "paused"; paused: boolean }
   | { type: "stt-error"; message: string };

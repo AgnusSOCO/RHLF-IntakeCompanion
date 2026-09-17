@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import type {
+  ChecklistItem,
   GuidanceItem,
   ServerEvent,
   Speaker,
+  SummaryEvent,
   TranscriptSegment,
 } from "./types";
 
@@ -21,6 +23,8 @@ interface State {
   segments: TranscriptSegment[];
   interim: Partial<Record<Speaker, Interim>>;
   cards: GuidanceItem[];
+  checklist: ChecklistItem[];
+  summary?: Omit<SummaryEvent, "type">;
   error?: string;
 }
 
@@ -34,6 +38,8 @@ type Action =
   | { t: "interim"; speaker: Speaker; text: string; language?: string }
   | { t: "final"; speaker: Speaker; text: string; language?: string }
   | { t: "card"; card: GuidanceItem }
+  | { t: "checklist"; items: ChecklistItem[] }
+  | { t: "summary"; v: Omit<SummaryEvent, "type"> }
   | { t: "dismiss"; key: string }
   | { t: "feedback"; key: string; v: "helpful" | "unhelpful" }
   | { t: "ageCards" };
@@ -51,6 +57,8 @@ function reducer(s: State, a: Action): State {
         ...s,
         call: { active: true, callerNumber: a.callerNumber, startedAt: Date.now() },
         cards: [],
+        checklist: [],
+        summary: undefined,
         thinking: false,
         segments: [],
         interim: {},
@@ -91,6 +99,10 @@ function reducer(s: State, a: Action): State {
       if (s.cards.some((c) => c.key === a.card.key)) return s;
       return { ...s, thinking: false, cards: [a.card, ...s.cards] };
     }
+    case "checklist":
+      return { ...s, checklist: a.items };
+    case "summary":
+      return { ...s, summary: a.v };
     case "dismiss":
       return { ...s, cards: s.cards.filter((c) => c.key !== a.key) };
     case "feedback":
@@ -113,6 +125,7 @@ const initial: State = {
   segments: [],
   interim: {},
   cards: [],
+  checklist: [],
 };
 
 export function useAssistant(extensionId: string | null, token: string | null) {
@@ -174,6 +187,20 @@ export function useAssistant(extensionId: string | null, token: string | null) {
             } else {
               dispatch({ t: "interim", speaker: m.speaker, text: m.text, language: m.language });
             }
+            break;
+          case "checklist":
+            dispatch({ t: "checklist", items: m.items });
+            break;
+          case "summary":
+            dispatch({
+              t: "summary",
+              v: {
+                sessionId: m.sessionId,
+                summary: m.summary,
+                fields: m.fields,
+                keyMoments: m.keyMoments,
+              },
+            });
             break;
           case "suggestion":
             dispatch({

@@ -5,25 +5,42 @@ import { CallTracker } from "./ringcentral/callTracker";
 import { ensureTelephonySubscription } from "./ringcentral/subscriptions";
 import { createHttpApp } from "./api/http";
 import { ObjectionEngine } from "./assist/objections";
+import { CallLog } from "./callLog";
 import { Hub } from "./hub";
 
 const tracker = new CallTracker();
 const objections = new ObjectionEngine();
 objections.load();
-const hub = new Hub(tracker, objections);
+const callLog = new CallLog();
+const hub = new Hub(tracker, objections, callLog);
 
-const app = createHttpApp(tracker);
+const app = createHttpApp(tracker, hub, callLog);
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
 function authParams(url: URL): { extensionId?: string; ok: boolean } {
   const token = url.searchParams.get("token");
   const extensionId = url.searchParams.get("extensionId") ?? undefined;
-  return { extensionId, ok: token === config.agentToken && Boolean(extensionId) };
+  if (!extensionId || !token) return { ok: false };
+  // Per-extension token wins; fall back to the shared agent token.
+  const expected = config.agentTokens.get(extensionId) ?? config.agentToken;
+  return { extensionId, ok: token === expected };
 }
 
 server.on("upgrade", (req, socket, head) => {
   const url = new URL(req.url ?? "/", `http://${req.headers.host}`);
+
+  // Admin/dashboard channel: receives every agent event, tagged by extension.
+  if (url.pathname === "/admin") {
+    if (!config.adminToken || url.searchParams.get("token") !== config.adminToken) {
+      socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");
+      socket.destroy();
+      return;
+    }
+    wss.handleUpgrade(req, socket, head, (ws) => hub.registerAdmin(ws));
+    return;
+  }
+
   const { extensionId, ok } = authParams(url);
   if (!ok || !extensionId) {
     socket.write("HTTP/1.1 401 Unauthorized\r\n\r\n");

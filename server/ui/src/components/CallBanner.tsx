@@ -20,14 +20,14 @@ export function CallBanner({
 
   if (!active) return null;
   return (
-    <div className="flex items-center gap-2.5 border-b border-red-500/20 bg-red-500/[0.06] px-4 py-2">
-      <span className="live-pulse h-2 w-2 rounded-full bg-red-500" />
-      <span className="text-[11px] font-bold tracking-[0.14em] text-red-400">
+    <div className="flex items-center gap-2.5 border-b border-red-200 bg-red-50 px-4 py-2">
+      <span className="live-pulse h-2 w-2 rounded-full bg-red-600" />
+      <span className="text-[11px] font-bold tracking-[0.14em] text-red-600">
         LIVE
       </span>
       {callerNumber && (
-        <span className="flex items-center gap-1.5 text-xs font-medium tabular-nums text-zinc-200">
-          <Phone className="h-3 w-3 text-zinc-500" />
+        <span className="flex items-center gap-1.5 text-xs font-medium tabular-nums text-zinc-800">
+          <Phone className="h-3 w-3 text-zinc-400" />
           {callerNumber}
         </span>
       )}

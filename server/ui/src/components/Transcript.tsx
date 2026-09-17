@@ -27,7 +27,7 @@ function Bubble({
       <div
         className={cn(
           "mt-4 grid h-6 w-6 shrink-0 place-items-center rounded-full text-[9px] font-bold",
-          isCaller ? "bg-blue-500/15 text-blue-400" : "bg-emerald-500/15 text-emerald-400"
+          isCaller ? "bg-blue-100 text-blue-700" : "bg-emerald-100 text-emerald-700"
         )}
       >
         {isCaller ? "C" : "A"}
@@ -35,13 +35,13 @@ function Bubble({
       <div className={cn("min-w-0 max-w-[80%]", !isCaller && "flex flex-col items-end")}>
         <div
           className={cn(
-            "mb-0.5 flex items-center gap-1.5 text-[10px] text-zinc-600",
+            "mb-0.5 flex items-center gap-1.5 text-[10px] text-zinc-400",
             !isCaller && "flex-row-reverse"
           )}
         >
           <span className="font-medium text-zinc-500">{isCaller ? "Caller" : "You"}</span>
           {language === "es" && (
-            <span className="rounded border border-zinc-700 px-1 text-[9px] font-semibold text-zinc-500">
+            <span className="rounded border border-zinc-300 px-1 text-[9px] font-semibold text-zinc-500">
               ES
             </span>
           )}
@@ -51,13 +51,14 @@ function Bubble({
           className={cn(
             "rounded-xl px-3 py-2 text-[13px] leading-relaxed",
             isCaller
-              ? "rounded-tl-sm bg-zinc-800/80 text-zinc-100"
-              : "rounded-tr-sm bg-emerald-950/50 text-emerald-50",
-            interim && "border border-dashed border-zinc-700 bg-transparent italic text-zinc-400"
+              ? "rounded-tl-sm bg-zinc-100 text-zinc-900"
+              : "rounded-tr-sm bg-emerald-600 text-white",
+            interim &&
+              "border border-dashed border-zinc-300 bg-white italic text-zinc-500"
           )}
         >
           {text}
-          {interim && <span className="caret-blink ml-0.5 text-zinc-500">▍</span>}
+          {interim && <span className="caret-blink ml-0.5 text-zinc-400">▍</span>}
         </div>
       </div>
     </div>
@@ -100,8 +101,8 @@ export function Transcript({
       <div ref={ref} onScroll={onScroll} className="scroll-slim min-h-0 flex-1 overflow-y-auto px-4 py-3">
         {empty ? (
           <div className="flex h-full flex-col items-center justify-center gap-2 text-center">
-            <PhoneOff className="h-5 w-5 text-zinc-700" />
-            <p className="text-xs text-zinc-600">
+            <PhoneOff className="h-5 w-5 text-zinc-300" />
+            <p className="text-xs text-zinc-400">
               {callActive ? "Listening…" : "Waiting for a call…"}
             </p>
           </div>
@@ -123,7 +124,7 @@ export function Transcript({
       {!pinned && !empty && (
         <button
           onClick={jump}
-          className="fade-in absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-700 bg-zinc-900/95 px-3 py-1.5 text-[11px] font-medium text-zinc-300 shadow-lg shadow-black/40 hover:bg-zinc-800"
+          className="fade-in absolute bottom-3 left-1/2 flex -translate-x-1/2 items-center gap-1.5 rounded-full border border-zinc-200 bg-white px-3 py-1.5 text-[11px] font-medium text-zinc-600 shadow-md hover:bg-zinc-50"
         >
           <ArrowDown className="h-3 w-3" />
           Jump to latest

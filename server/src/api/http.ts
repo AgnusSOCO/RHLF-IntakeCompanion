@@ -1,14 +1,49 @@
-import express, { Request, Response } from "express";
+import express, { NextFunction, Request, Response } from "express";
 import path from "node:path";
 import { config } from "../config";
 import { CallTracker } from "../ringcentral/callTracker";
+import { CallLog } from "../callLog";
+import type { Hub } from "../hub";
 
-export function createHttpApp(tracker: CallTracker) {
+/** Bearer or ?token= check for admin endpoints (dashboard, monitoring). */
+function adminAuth(req: Request, res: Response, next: NextFunction) {
+  const bearer = req.header("authorization")?.replace(/^Bearer /i, "");
+  const token = bearer ?? (req.query.token as string | undefined);
+  if (!config.adminToken || token !== config.adminToken) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+  next();
+}
+
+export function createHttpApp(tracker: CallTracker, hub: Hub, callLog: CallLog) {
   const app = express();
   app.use(express.json({ limit: "256kb" }));
 
+  // Dashboard integration reads /api/* cross-origin (e.g. rhlf-ai on another
+  // domain). Token-gated; tighten to explicit origins before production.
+  app.use("/api", (_req, res, next) => {
+    res.setHeader("Access-Control-Allow-Origin", "*");
+    res.setHeader("Access-Control-Allow-Headers", "authorization,content-type");
+    next();
+  });
+
   app.get("/healthz", (_req, res) => {
     res.json({ ok: true, activeSessions: (tracker as any).sessions?.size ?? 0 });
+  });
+
+  /** Live fleet snapshot — every known extension and its call state. */
+  app.get("/api/agents", adminAuth, (_req, res) => {
+    res.json({ agents: hub.agentStatus() });
+  });
+
+  /** Recent call records with post-call summaries — newest first. */
+  app.get("/api/calls", adminAuth, (req, res) => {
+    const limit = Math.min(Number(req.query.limit) || 50, 200);
+    const calls = callLog.list(limit).map((r) => ({
+      ...r,
+      durationMs: (r.endedAt ?? Date.now()) - r.startedAt,
+    }));
+    res.json({ calls });
   });
 
   /**

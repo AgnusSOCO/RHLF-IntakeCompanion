@@ -54,6 +54,12 @@ Deployed to Railway (`railway up` from `server/`). Env vars on the service:
   (e.g. Groq `https://api.groq.com/openai/v1`, `llama-3.1-8b-instant`). Without a
   key, only the deterministic playbook runs.
 - `AGENT_TOKEN` — shared PoC token agents enter on first run (replace with SSO/per-agent auth for production)
+- `AGENT_TOKENS` — optional per-extension tokens: JSON `{"101":"tok","102":"tok2"}` or CSV `101:tok,102:tok2`. When set for an extension, it overrides `AGENT_TOKEN`.
+- `ADMIN_TOKEN` — gates the admin surface for supervisor monitoring / dashboards
+  (e.g. the rhlf-ai dashboard):
+  - `GET /api/agents` — live fleet snapshot (per extension: companion connected, UI clients, active call, paused)
+  - `GET /api/calls?limit=N` — recent call records: duration, segment/suggestion counts, feedback tallies, post-call AI summary + extracted fields
+  - `wss://…/admin?token=…` — every agent event (transcripts, suggestions, checklist, call lifecycle) tagged with `extensionId`
 - `DEV_EVENTS=1` — enables `POST /dev/call-event` for testing without RingCentral; unset when real RC credentials are wired
 - `PUBLIC_URL` + `RC_*` — needed for real RingEX telephony events
 

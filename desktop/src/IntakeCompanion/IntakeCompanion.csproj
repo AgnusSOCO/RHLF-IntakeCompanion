@@ -13,9 +13,11 @@
     <SelfContained>true</SelfContained>
     <RuntimeIdentifier>win-x64</RuntimeIdentifier>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+    <ApplicationIcon>Assets\app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Assets\app.ico" LogicalName="Rhlf.IntakeCompanion.app.ico" />
     <PackageReference Include="NAudio" Version="2.2.1" />
     <PackageReference Include="Microsoft.Web.WebView2" Version="1.0.2903.40" />
   </ItemGroup>

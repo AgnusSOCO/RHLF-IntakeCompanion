@@ -12,7 +12,7 @@ body,
 }
 
 body {
-  @apply bg-zinc-950 text-zinc-100 antialiased;
+  @apply bg-zinc-50 text-zinc-900 antialiased;
   font-feature-settings: "cv11", "ss01";
   overscroll-behavior: none;
 }
@@ -20,13 +20,13 @@ body {
 /* Slim, unobtrusive scrollbars */
 .scroll-slim {
   scrollbar-width: thin;
-  scrollbar-color: theme("colors.zinc.700") transparent;
+  scrollbar-color: theme("colors.zinc.300") transparent;
 }
 .scroll-slim::-webkit-scrollbar {
   width: 6px;
 }
 .scroll-slim::-webkit-scrollbar-thumb {
-  background: theme("colors.zinc.700");
+  background: theme("colors.zinc.300");
   border-radius: 3px;
 }
 .scroll-slim::-webkit-scrollbar-track {
@@ -51,11 +51,11 @@ body {
   0%,
   100% {
     opacity: 1;
-    box-shadow: 0 0 0 0 rgb(239 68 68 / 0.5);
+    box-shadow: 0 0 0 0 rgb(220 38 38 / 0.4);
   }
   50% {
     opacity: 0.75;
-    box-shadow: 0 0 0 5px rgb(239 68 68 / 0);
+    box-shadow: 0 0 0 5px rgb(220 38 38 / 0);
   }
 }
 .live-pulse {
@@ -86,9 +86,9 @@ body {
 .thinking-shimmer {
   background: linear-gradient(
     90deg,
-    theme("colors.zinc.800") 25%,
-    theme("colors.zinc.700") 50%,
-    theme("colors.zinc.800") 75%
+    theme("colors.zinc.200") 25%,
+    theme("colors.zinc.100") 50%,
+    theme("colors.zinc.200") 75%
   );
   background-size: 200px 100%;
   animation: thinking-shimmer 1.4s linear infinite;

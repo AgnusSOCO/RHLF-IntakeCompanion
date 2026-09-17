@@ -3,12 +3,15 @@ import { CallTracker, CallStarted } from "./ringcentral/callTracker";
 import { CallPipeline } from "./audio/pipeline";
 import { ObjectionEngine } from "./assist/objections";
 import { SpeakerChannel } from "./audio/stt";
+import { CallLog } from "./callLog";
 
 /**
  * Wires everything together:
  *   CallTracker (RingEX events) -> companion control + CallPipeline
  *   Companion WS (/audio)       -> binary PCM frames into the pipeline
  *   UI WS (/ui)                 -> transcripts, suggestions, pause control
+ *   Admin WS (/admin)           -> all agent events tagged by extension
+ *                                  (for supervisor monitoring / dashboards)
  *
  * Audio frame protocol from the companion:
  *   binary frame, byte[0] = channel (0 = caller/playback, 1 = agent/mic),
@@ -21,12 +24,24 @@ interface AgentSockets {
   pipeline?: CallPipeline;
 }
 
+export interface AgentStatus {
+  extensionId: string;
+  companionConnected: boolean;
+  uiClients: number;
+  activeSession: string | null;
+  callerNumber?: string;
+  callStartedAt?: number;
+  paused: boolean;
+}
+
 export class Hub {
   private agents = new Map<string, AgentSockets>();
+  private admins = new Set<WebSocket>();
 
   constructor(
     private tracker: CallTracker,
-    private objections: ObjectionEngine
+    private objections: ObjectionEngine,
+    private callLog: CallLog
   ) {
     tracker.on("callStarted", (c: CallStarted) => this.onCallStarted(c));
     tracker.on("callEnded", (c: { extensionId: string; telephonySessionId: string }) =>
@@ -43,12 +58,32 @@ export class Hub {
     return e;
   }
 
+  /** Live fleet snapshot for /api/agents. */
+  agentStatus(): AgentStatus[] {
+    const out: AgentStatus[] = [];
+    for (const [extensionId, e] of this.agents) {
+      const sessionId = this.tracker.activeSessionFor(extensionId);
+      const rec = sessionId ? this.callLog.get(sessionId) : undefined;
+      out.push({
+        extensionId,
+        companionConnected: Boolean(e.companion),
+        uiClients: e.ui.size,
+        activeSession: sessionId ?? null,
+        callerNumber: rec?.callerNumber,
+        callStartedAt: rec?.startedAt,
+        paused: e.pipeline?.isPaused() ?? false,
+      });
+    }
+    return out;
+  }
+
   /** Companion app connection. */
   registerCompanion(extensionId: string, ws: WebSocket): void {
     const e = this.entry(extensionId);
     e.companion?.close();
     e.companion = ws;
     console.log(`[hub] companion connected for extension ${extensionId}`);
+    this.broadcastAdmin({ type: "agentOnline", extensionId });
 
     let audioBytes = { caller: 0, agent: 0 };
     ws.on("message", (data, isBinary) => {
@@ -79,6 +114,7 @@ export class Hub {
     ws.on("close", () => {
       if (e.companion === ws) e.companion = undefined;
       console.log(`[hub] companion disconnected for extension ${extensionId}`);
+      this.broadcastAdmin({ type: "agentOffline", extensionId });
     });
 
     // If a call is already active (companion reconnected mid-call), resume.
@@ -103,9 +139,13 @@ export class Hub {
           e.companion?.send(JSON.stringify({ type: "pause", paused: msg.paused }));
         } else if (msg.type === "feedback") {
           // guidance quality signal - ids only, never transcript content
+          const sessionId = this.tracker.activeSessionFor(extensionId);
+          const rec = sessionId ? this.callLog.get(sessionId) : undefined;
+          if (rec) rec.feedback[msg.helpful ? "helpful" : "unhelpful"]++;
           console.log(
             `[feedback] ext=${extensionId} id=${msg.objectionId} kind=${msg.kind} helpful=${msg.helpful}`
           );
+          this.broadcastAdmin({ type: "feedback", extensionId, ...msg });
         }
       } catch {
         /* ignore malformed control */
@@ -122,23 +162,61 @@ export class Hub {
     );
   }
 
+  /** Supervisor/admin connection — every agent event, tagged by extension. */
+  registerAdmin(ws: WebSocket): void {
+    this.admins.add(ws);
+    console.log(`[hub] admin connected (${this.admins.size} clients)`);
+    ws.on("close", () => this.admins.delete(ws));
+    ws.send(JSON.stringify({ type: "hello", agents: this.agentStatus() }));
+  }
+
   private onCallStarted(c: CallStarted): void {
     const e = this.agents.get(c.extensionId);
     e?.companion?.send(
       JSON.stringify({ type: "callStart", sessionId: c.telephonySessionId, caller: c.callerNumber })
     );
+    this.callLog.start(c.telephonySessionId, c.extensionId, c.callerNumber);
     this.startPipeline(c.extensionId, c.telephonySessionId);
     this.broadcastUi(c.extensionId, { type: "callStart", ...c });
+    this.broadcastAdmin({ type: "callStart", ...c });
     console.log(`[hub] call started: ext=${c.extensionId} session=${c.telephonySessionId}`);
   }
 
   private onCallEnded(c: { extensionId: string; telephonySessionId: string }): void {
     const e = this.agents.get(c.extensionId);
-    e?.pipeline?.dispose();
+    const pipeline = e?.pipeline;
     e && (e.pipeline = undefined);
     e?.companion?.send(JSON.stringify({ type: "callEnd", sessionId: c.telephonySessionId }));
     this.broadcastUi(c.extensionId, { type: "callEnd", ...c });
+    this.broadcastAdmin({ type: "callEnd", ...c });
     console.log(`[hub] call ended: ext=${c.extensionId} session=${c.telephonySessionId}`);
+
+    // Post-call: finalize (close STT streams, build summary) then store the record.
+    const rec = this.callLog.get(c.telephonySessionId);
+    pipeline
+      ?.finalize()
+      .then((summary) => {
+        if (rec) {
+          rec.endedAt = Date.now();
+          rec.transcriptSegments = pipeline.finalCount;
+          rec.suggestions = pipeline.suggestionCount;
+          if (summary) rec.summary = summary;
+        }
+        if (summary) {
+          this.broadcastUi(c.extensionId, {
+            type: "summary",
+            sessionId: c.telephonySessionId,
+            ...summary,
+          });
+          this.broadcastAdmin({
+            type: "summary",
+            extensionId: c.extensionId,
+            sessionId: c.telephonySessionId,
+            ...summary,
+          });
+        }
+      })
+      .catch(() => {});
   }
 
   private startPipeline(extensionId: string, sessionId: string): void {
@@ -147,18 +225,19 @@ export class Hub {
     const pipeline = new CallPipeline(sessionId, extensionId, this.objections);
     e.pipeline = pipeline;
 
-    pipeline.bus.on("transcript", (t) => this.broadcastUi(extensionId, { type: "transcript", ...t }));
-    pipeline.bus.on("suggestion", (s) =>
-      this.broadcastUi(extensionId, { type: "suggestion", ...s })
-    );
+    const fanOut = (msg: unknown) => {
+      this.broadcastUi(extensionId, msg);
+      this.broadcastAdmin({ extensionId, ...(msg as object) });
+    };
+    pipeline.bus.on("transcript", (t) => fanOut({ type: "transcript", ...t }));
+    pipeline.bus.on("suggestion", (s) => fanOut({ type: "suggestion", ...s }));
+    pipeline.bus.on("checklist", (items) => fanOut({ type: "checklist", items }));
     pipeline.bus.on("stt-error", (err) => {
       console.error(`[stt] ext=${extensionId}: ${err.message}`);
-      this.broadcastUi(extensionId, { type: "stt-error", message: err.message });
+      fanOut({ type: "stt-error", message: err.message });
     });
-    pipeline.bus.on("assist-thinking", () =>
-      this.broadcastUi(extensionId, { type: "assist-thinking" })
-    );
-    pipeline.bus.on("paused", (p) => this.broadcastUi(extensionId, { type: "paused", paused: p }));
+    pipeline.bus.on("assist-thinking", () => fanOut({ type: "assist-thinking" }));
+    pipeline.bus.on("paused", (p) => fanOut({ type: "paused", paused: p }));
   }
 
   private broadcastUi(extensionId: string, msg: unknown): void {
@@ -166,6 +245,14 @@ export class Hub {
     if (!e) return;
     const payload = JSON.stringify(msg);
     for (const ws of e.ui) {
+      if (ws.readyState === WebSocket.OPEN) ws.send(payload);
+    }
+  }
+
+  private broadcastAdmin(msg: unknown): void {
+    if (this.admins.size === 0) return;
+    const payload = JSON.stringify(msg);
+    for (const ws of this.admins) {
       if (ws.readyState === WebSocket.OPEN) ws.send(payload);
     }
   }
