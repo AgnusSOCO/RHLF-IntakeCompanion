@@ -53,8 +53,14 @@ Deployed to Railway (`railway up` from `server/`). Env vars on the service:
   `LLM_MODEL=claude-haiku-4-5`. For `openai`, any OpenAI-compatible endpoint works
   (e.g. Groq `https://api.groq.com/openai/v1`, `llama-3.1-8b-instant`). Without a
   key, only the deterministic playbook runs.
-- `AGENT_TOKEN` — shared PoC token agents enter on first run (replace with SSO/per-agent auth for production)
-- `AGENT_TOKENS` — optional per-extension tokens: JSON `{"101":"tok","102":"tok2"}` or CSV `101:tok,102:tok2`. When set for an extension, it overrides `AGENT_TOKEN`. Recommended for production: it makes `/api/history` per-agent isolation real (with the shared token, any agent token reads any extension's history).
+- `AGENT_TOKEN` — shared PoC token; works for any extension that hasn't been paired
+- `AGENT_TOKENS` — optional per-extension tokens: JSON `{"101":"tok","102":"tok2"}` or CSV `101:tok,102:tok2`. When set for an extension, it overrides everything else.
+- **Agent pairing (preferred)** — dashboard Live calls → "Pair agent" mints a
+  one-time 6-digit code (`POST /api/admin/pair`); the agent enters it in the
+  companion setup dialog (or `--code 123456`), which exchanges it for a durable
+  per-extension token (`POST /api/pair/exchange`). Once an extension is paired
+  the shared `AGENT_TOKEN` no longer authenticates it — each paired agent is a
+  distinct identity for history, dispositions, and dashboard attribution.
 - `DATABASE_URL` — Postgres connection string (Railway Postgres plugin auto-provides it via `${{Postgres.DATABASE_URL}}`). Persists agents, call records, transcripts, summaries, coverage and feedback across deploys. Without it the service runs in-memory only.
 - `ADMIN_TOKEN` — gates the admin surface for supervisor monitoring / dashboards
   (e.g. the rhlf-ai dashboard):
@@ -108,6 +114,9 @@ Agent-facing endpoint: `GET /api/history?extensionId=&token=&from=<ms>&to=<ms>&q
   number has prior records.
 - Post-call — AI summary, structured fields, key moments, and a coaching note,
   all persisted and shown to the agent plus the dashboard.
+- Dispositions — after the call the agent picks an outcome (Signed / Call back /
+  Attorney review / Not qualified / Spam) via `POST /api/disposition`; feeds the
+  dashboard outcomes funnel.
 
 ### Windows companion
 
