@@ -4,6 +4,7 @@ import { CallPipeline } from "./audio/pipeline";
 import { ObjectionEngine } from "./assist/objections";
 import { SpeakerChannel } from "./audio/stt";
 import { CallLog } from "./callLog";
+import { Store } from "./store";
 
 /**
  * Wires everything together:
@@ -26,6 +27,7 @@ interface AgentSockets {
 
 export interface AgentStatus {
   extensionId: string;
+  name?: string;
   companionConnected: boolean;
   uiClients: number;
   activeSession: string | null;
@@ -41,7 +43,8 @@ export class Hub {
   constructor(
     private tracker: CallTracker,
     private objections: ObjectionEngine,
-    private callLog: CallLog
+    private callLog: CallLog,
+    private store: Store
   ) {
     tracker.on("callStarted", (c: CallStarted) => this.onCallStarted(c));
     tracker.on("callEnded", (c: { extensionId: string; telephonySessionId: string }) =>
@@ -66,6 +69,7 @@ export class Hub {
       const rec = sessionId ? this.callLog.get(sessionId) : undefined;
       out.push({
         extensionId,
+        name: this.store.agentName(extensionId),
         companionConnected: Boolean(e.companion),
         uiClients: e.ui.size,
         activeSession: sessionId ?? null,
@@ -102,10 +106,18 @@ export class Hub {
         e.pipeline?.sendAudio(channel, buf.subarray(1));
         return;
       }
-      // JSON control from companion (e.g. capture health)
+      // JSON control from companion (hello, capture health)
       try {
         const msg = JSON.parse(data.toString());
-        if (msg.type === "state") this.broadcastUi(extensionId, msg);
+        if (msg.type === "hello") {
+          this.store.upsertAgent(extensionId, msg.name);
+          this.broadcastUi(extensionId, {
+            type: "agentInfo",
+            name: this.store.agentName(extensionId) ?? null,
+          });
+        } else if (msg.type === "state") {
+          this.broadcastUi(extensionId, msg);
+        }
       } catch {
         /* ignore malformed control */
       }
@@ -175,11 +187,25 @@ export class Hub {
     e?.companion?.send(
       JSON.stringify({ type: "callStart", sessionId: c.telephonySessionId, caller: c.callerNumber })
     );
-    this.callLog.start(c.telephonySessionId, c.extensionId, c.callerNumber);
+    const rec = this.callLog.start(c.telephonySessionId, c.extensionId, c.callerNumber);
     this.startPipeline(c.extensionId, c.telephonySessionId);
-    this.broadcastUi(c.extensionId, { type: "callStart", ...c });
-    this.broadcastAdmin({ type: "callStart", ...c });
     console.log(`[hub] call started: ext=${c.extensionId} session=${c.telephonySessionId}`);
+
+    // Repeat-caller detection: annotate the callStart broadcast so the agent
+    // sees "2nd call from this number" immediately.
+    const announce = (priorCalls?: { count: number; lastAt: number | null }) => {
+      const payload = { type: "callStart", ...c, priorCalls };
+      if (priorCalls) rec.priorCalls = priorCalls;
+      this.broadcastUi(c.extensionId, payload);
+      this.broadcastAdmin(payload);
+    };
+    if (this.store.enabled && c.callerNumber) {
+      this.store.callerHistory(c.callerNumber).then((h) => {
+        announce(h.count > 0 ? h : undefined);
+      });
+    } else {
+      announce();
+    }
   }
 
   private onCallEnded(c: { extensionId: string; telephonySessionId: string }): void {
@@ -195,12 +221,16 @@ export class Hub {
     const rec = this.callLog.get(c.telephonySessionId);
     pipeline
       ?.finalize()
-      .then((summary) => {
+      .then((result) => {
+        if (!result) return;
+        const { summary, transcript, coverage } = result;
         if (rec) {
           rec.endedAt = Date.now();
           rec.transcriptSegments = pipeline.finalCount;
           rec.suggestions = pipeline.suggestionCount;
           if (summary) rec.summary = summary;
+          // Persist the full record (transcript + summary + metrics).
+          this.store.saveCall(rec, transcript, coverage);
         }
         if (summary) {
           this.broadcastUi(c.extensionId, {
@@ -232,6 +262,7 @@ export class Hub {
     pipeline.bus.on("transcript", (t) => fanOut({ type: "transcript", ...t }));
     pipeline.bus.on("suggestion", (s) => fanOut({ type: "suggestion", ...s }));
     pipeline.bus.on("checklist", (items) => fanOut({ type: "checklist", items }));
+    pipeline.bus.on("flags", (flags) => fanOut({ type: "flags", flags }));
     pipeline.bus.on("stt-error", (err) => {
       console.error(`[stt] ext=${extensionId}: ${err.message}`);
       fanOut({ type: "stt-error", message: err.message });

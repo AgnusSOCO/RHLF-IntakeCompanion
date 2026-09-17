@@ -23,6 +23,17 @@ export interface CallSummary {
   summary: string;
   fields: Record<string, string>;
   keyMoments: string[];
+  coaching?: string;
+}
+
+export interface CallFlag {
+  label: string;
+  severity: "alert" | "info";
+}
+
+export interface ChecklistResult {
+  covered: Record<string, string>;
+  flags: CallFlag[];
 }
 
 const SYSTEM_PROMPT = `You are the live-call assistant for Richard Harris Law Firm, a personal-injury law firm in Las Vegas, Nevada. You listen to a real-time intake call and help the INTAKE AGENT — who is not an attorney and cannot give legal advice — respond to caller objections and questions.
@@ -48,7 +59,20 @@ const CHECKLIST_PROMPT = `You analyze a live personal-injury intake call transcr
 
 Fields: caller_identity (name + how to reach them), incident_type (crash/slip-fall/work injury/etc), incident_date (when), location (where), how_it_happened (mechanism/fault context), injuries (what hurts), medical (treatment sought/received), police_report (report filed), insurance (any insurance details mentioned), representation (has/needs other attorney), employment (employer — only for work injuries).
 
-Output ONLY JSON: {"covered": {"<field_id>": "<≤8-word detail from transcript>"}} — include ONLY fields actually discussed. Spanish transcript is fine; write details in English.`;
+Output ONLY JSON:
+{"covered": {"<field_id>": "<≤8-word detail from transcript>"},
+ "flags": [{"label": "<≤8-word description>", "severity": "alert|info"}]}
+
+Include ONLY fields actually discussed. Spanish transcript is fine; write details in English.
+
+Flags — emit only when the transcript clearly contains it, max 3, most important first:
+- "alert": medical emergency or caller in danger now, self-harm, caller already represented by
+  another firm, minor involved, caller threatens or complains about the firm, caller mentions
+  recording the call, criminal or immigration issue, deadline/statute urgency (old incident),
+  caller says stop calling / do not contact.
+- "info": caller admits partial fault, uninsured/no insurance, hit-and-run, police report exists,
+  caller already gave a recorded statement to an insurer, repeat-caller frustration, comparing firms.
+Use "flags": [] when none apply.`;
 
 const SUMMARY_PROMPT = `You summarize a completed personal-injury intake call for Richard Harris Law Firm (Las Vegas). The intake agent is not an attorney.
 
@@ -56,9 +80,10 @@ Output ONLY JSON:
 {
   "summary": "<2-3 sentence call summary for case notes, English>",
   "fields": {"caller_name": "", "contact": "", "incident_type": "", "incident_date": "", "location": "", "injuries": "", "insurance": "", "urgent_flags": ""},
-  "key_moments": ["<short label: important statement, objection raised, escalation trigger>"]
+  "key_moments": ["<short label: important statement, objection raised, escalation trigger>"],
+  "coaching": "<≤15-word note for the intake agent: one thing done well or to improve next call>"
 }
-Leave fields empty when not discussed. key_moments max 4, each ≤10 words.`;
+Leave fields empty when not discussed. key_moments max 4, each ≤10 words. Coaching should be constructive and specific to this call.`;
 
 const USER_PAYLOAD = (
   history: { speaker: string; text: string }[],
@@ -174,17 +199,30 @@ export async function assistWithAi(
  */
 export async function extractChecklist(
   history: { speaker: string; text: string }[]
-): Promise<Record<string, string> | null> {
+): Promise<ChecklistResult | null> {
   if (!config.llmApiKey || history.length < 2) return null;
   const content = await callLlm(
     CHECKLIST_PROMPT,
     JSON.stringify({ transcript: history.slice(-60) }),
-    400
+    500
   );
   if (!content) return null;
   try {
-    const parsed = JSON.parse(content) as { covered?: Record<string, string> };
-    return parsed.covered ?? null;
+    const parsed = JSON.parse(content) as {
+      covered?: Record<string, string>;
+      flags?: { label?: string; severity?: string }[];
+    };
+    if (!parsed.covered) return null;
+    const flags: CallFlag[] = Array.isArray(parsed.flags)
+      ? parsed.flags
+          .filter((f) => f && typeof f.label === "string" && f.label.trim())
+          .slice(0, 3)
+          .map((f) => ({
+            label: f.label!.trim().slice(0, 80),
+            severity: f.severity === "alert" ? ("alert" as const) : ("info" as const),
+          }))
+      : [];
+    return { covered: parsed.covered, flags };
   } catch {
     return null;
   }
@@ -206,12 +244,14 @@ export async function summarizeCall(
       summary?: string;
       fields?: Record<string, string>;
       key_moments?: string[];
+      coaching?: string;
     };
     if (!parsed.summary) return null;
     return {
       summary: parsed.summary,
       fields: parsed.fields ?? {},
       keyMoments: parsed.key_moments ?? [],
+      coaching: parsed.coaching?.slice(0, 140),
     };
   } catch {
     return null;

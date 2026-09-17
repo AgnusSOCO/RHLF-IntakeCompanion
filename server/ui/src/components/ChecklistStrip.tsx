@@ -1,6 +1,21 @@
-import { Check, CircleDashed, ClipboardList } from "lucide-react";
+import { Check, CircleDashed, ClipboardList, MessageCircleQuestion } from "lucide-react";
 import { cn } from "../lib/utils";
 import type { ChecklistItem } from "../lib/types";
+
+/** Deterministic next-question prompts keyed by uncovered checklist field. */
+const ASK_NEXT: Record<string, string> = {
+  caller_identity: "May I get your full name and the best number to reach you?",
+  incident_type: "Can you tell me what happened — what kind of incident was it?",
+  incident_date: "When did this happen?",
+  location: "Where did it happen — do you remember the street or area?",
+  how_it_happened: "Can you walk me through how it happened?",
+  injuries: "Were you injured? What hurts?",
+  medical: "Have you seen a doctor or gotten any medical treatment yet?",
+  police_report: "Did the police come — was a report filed?",
+  insurance: "Do you have the other party's insurance information?",
+  representation: "Are you currently working with another attorney?",
+  employment: "Who is your employer?",
+};
 
 /**
  * Intake-progress chips: which standard fields the call has covered so far.
@@ -9,6 +24,7 @@ import type { ChecklistItem } from "../lib/types";
 export function ChecklistStrip({ items, callActive }: { items: ChecklistItem[]; callActive: boolean }) {
   if (items.length === 0) return null;
   const covered = items.filter((i) => i.covered).length;
+  const nextGap = items.find((i) => !i.covered && i.id !== "employment");
   return (
     <div className="border-b border-zinc-200 bg-white px-4 py-2">
       <div className="mb-1.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-[0.14em] text-zinc-500">
@@ -36,6 +52,15 @@ export function ChecklistStrip({ items, callActive }: { items: ChecklistItem[]; 
           </span>
         ))}
       </div>
+      {callActive && nextGap && (
+        <div className="mt-1.5 flex items-start gap-1.5 text-[10.5px] text-zinc-500">
+          <MessageCircleQuestion className="mt-px h-3 w-3 shrink-0 text-zinc-400" />
+          <span>
+            <span className="font-medium text-zinc-600">Ask next:</span>{" "}
+            {ASK_NEXT[nextGap.id] ?? `Collect ${nextGap.label.toLowerCase()}`}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

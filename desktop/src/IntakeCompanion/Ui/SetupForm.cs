@@ -9,13 +9,14 @@ internal sealed class SetupForm : Form
     private readonly TextBox _server;
     private readonly TextBox _extension;
     private readonly TextBox _token;
+    private readonly TextBox _name;
     private readonly CompanionConfig _config;
 
     public SetupForm(CompanionConfig config)
     {
         _config = config;
         Text = "RHLF Intake Assistant - Setup";
-        Width = 460; Height = 240;
+        Width = 460; Height = 280;
         FormBorderStyle = FormBorderStyle.FixedDialog;
         MaximizeBox = false;
         StartPosition = FormStartPosition.CenterScreen;
@@ -33,6 +34,7 @@ internal sealed class SetupForm : Form
         _server = AddRow(layout, "Server", config.Server, 0);
         _extension = AddRow(layout, "Extension", config.Extension ?? "", 1);
         _token = AddRow(layout, "Agent token", config.Token ?? "", 2);
+        _name = AddRow(layout, "Your name", config.Name ?? "", 3);
 
         var start = new Button { Text = "Save && Start", Dock = DockStyle.Fill, Height = 30 };
         start.Click += (_, _) =>
@@ -46,10 +48,11 @@ internal sealed class SetupForm : Form
             _config.Server = _server.Text.Trim();
             _config.Extension = _extension.Text.Trim();
             _config.Token = _token.Text.Trim();
+            _config.Name = string.IsNullOrWhiteSpace(_name.Text) ? null : _name.Text.Trim();
             DialogResult = DialogResult.OK;
             Close();
         };
-        layout.Controls.Add(start, 0, 3);
+        layout.Controls.Add(start, 0, 4);
         layout.SetColumnSpan(start, 2);
         AcceptButton = start;
     }

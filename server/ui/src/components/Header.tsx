@@ -12,12 +12,14 @@ const CONN: Record<ConnStatus, { dot: string; label: string }> = {
 export function Header({
   conn,
   extensionId,
+  agentName,
   paused,
   callActive,
   onPause,
 }: {
   conn: ConnStatus;
   extensionId: string | null;
+  agentName?: string;
   paused: boolean;
   callActive: boolean;
   onPause: (v: boolean) => void;
@@ -41,7 +43,11 @@ export function Header({
         <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
           <span className={cn("h-1.5 w-1.5 rounded-full", c.dot)} />
           <span>
-            {conn === "online" && extensionId ? `Ext ${extensionId}` : c.label}
+            {conn === "online" && extensionId
+              ? agentName
+                ? `${agentName} · Ext ${extensionId}`
+                : `Ext ${extensionId}`
+              : c.label}
           </span>
         </div>
         <Button

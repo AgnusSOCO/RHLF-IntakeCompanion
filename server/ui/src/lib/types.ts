@@ -33,6 +33,33 @@ export interface CallStartEvent {
   telephonySessionId: string;
   agentPartyId?: string;
   callerNumber?: string;
+  priorCalls?: { count: number; lastAt: number | null };
+}
+
+export interface CallFlag {
+  label: string;
+  severity: "alert" | "info";
+}
+
+export interface HistoryCall {
+  sessionId: string;
+  extensionId: string;
+  callerNumber?: string;
+  startedAt: number;
+  endedAt?: number;
+  durationMs: number;
+  transcriptSegments: number;
+  suggestions: number;
+  feedback: { helpful: number; unhelpful: number };
+  summary?: {
+    summary: string;
+    fields: Record<string, string>;
+    keyMoments: string[];
+    coaching?: string;
+  };
+  transcript?: { speaker: string; text: string }[];
+  coverage?: number;
+  coverageTotal?: number;
 }
 
 export interface ChecklistItem {
@@ -48,10 +75,13 @@ export interface SummaryEvent {
   summary: string;
   fields: Record<string, string>;
   keyMoments: string[];
+  coaching?: string;
 }
 
 export type ServerEvent =
   | { type: "hello"; extensionId: string; activeSession: string | null }
+  | { type: "agentInfo"; name: string | null }
+  | { type: "flags"; flags: CallFlag[] }
   | CallStartEvent
   | { type: "callEnd"; extensionId: string; telephonySessionId: string }
   | { type: "state"; capturing?: boolean; mode?: string; paused?: boolean }

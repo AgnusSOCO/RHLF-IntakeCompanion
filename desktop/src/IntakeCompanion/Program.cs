@@ -58,6 +58,7 @@ internal static class Program
         cfg.Server = GetArg("--server") ?? cfg.Server;
         cfg.Extension = GetArg("--extension") ?? cfg.Extension;
         cfg.Token = GetArg("--token") ?? cfg.Token;
+        cfg.Name = GetArg("--name") ?? cfg.Name;
         cfg.ProcessName = GetArg("--process-name") ?? cfg.ProcessName;
         cfg.LoopbackMode = GetArg("--loopback-mode") ?? cfg.LoopbackMode;
 
@@ -69,7 +70,7 @@ internal static class Program
         cfg.Save(); // persists CLI overrides too, so the next double-click just works
 
         using var controller = new CompanionController(
-            cfg.Server, cfg.Extension!, cfg.Token!, cfg.ProcessName, cfg.LoopbackMode);
+            cfg.Server, cfg.Extension!, cfg.Token!, cfg.ProcessName, cfg.LoopbackMode, cfg.Name);
         Application.Run(new MainForm(controller, controller.UiUrl));
         return 0;
     }

@@ -3,6 +3,7 @@ import path from "node:path";
 import { config } from "../config";
 import { CallTracker } from "../ringcentral/callTracker";
 import { CallLog } from "../callLog";
+import { Store } from "../store";
 import type { Hub } from "../hub";
 
 /** Bearer or ?token= check for admin endpoints (dashboard, monitoring). */
@@ -15,7 +16,21 @@ function adminAuth(req: Request, res: Response, next: NextFunction) {
   next();
 }
 
-export function createHttpApp(tracker: CallTracker, hub: Hub, callLog: CallLog) {
+/** Agent-scoped auth: extensionId + that extension's token (or shared token). */
+function agentAuth(req: Request): string | null {
+  const extensionId = req.query.extensionId as string | undefined;
+  const token = req.query.token as string | undefined;
+  if (!extensionId || !token) return null;
+  const expected = config.agentTokens.get(extensionId) ?? config.agentToken;
+  return token === expected ? extensionId : null;
+}
+
+export function createHttpApp(
+  tracker: CallTracker,
+  hub: Hub,
+  callLog: CallLog,
+  store: Store
+) {
   const app = express();
   app.use(express.json({ limit: "256kb" }));
 
@@ -32,18 +47,72 @@ export function createHttpApp(tracker: CallTracker, hub: Hub, callLog: CallLog) 
   });
 
   /** Live fleet snapshot — every known extension and its call state. */
-  app.get("/api/agents", adminAuth, (_req, res) => {
-    res.json({ agents: hub.agentStatus() });
+  app.get("/api/agents", adminAuth, async (_req, res) => {
+    const live = hub.agentStatus();
+    // Merge in stored agents that aren't connected right now (offline).
+    const known = new Set(live.map((a) => a.extensionId));
+    const stored = store.enabled ? await store.listAgents() : [];
+    const offline = stored
+      .filter((a) => !known.has(a.extensionId))
+      .map((a) => ({
+        extensionId: a.extensionId,
+        name: a.name ?? undefined,
+        companionConnected: false,
+        uiClients: 0,
+        activeSession: null,
+        paused: false,
+        lastSeen: a.lastSeen,
+      }));
+    res.json({ agents: [...live, ...offline] });
   });
 
   /** Recent call records with post-call summaries — newest first. */
-  app.get("/api/calls", adminAuth, (req, res) => {
+  app.get("/api/calls", adminAuth, async (req, res) => {
     const limit = Math.min(Number(req.query.limit) || 50, 200);
-    const calls = callLog.list(limit).map((r) => ({
+    const rows = store.enabled ? await store.listCalls(limit) : callLog.list(limit);
+    const calls = rows.map((r) => ({
       ...r,
+      agentName: store.agentName(r.extensionId),
       durationMs: (r.endedAt ?? Date.now()) - r.startedAt,
     }));
     res.json({ calls });
+  });
+
+  /** Per-agent aggregates — the dashboard's performance feed. */
+  app.get("/api/performance", adminAuth, async (_req, res) => {
+    if (!store.enabled) return res.json({ agents: [], note: "no DATABASE_URL" });
+    res.json({ agents: await store.agentPerformance() });
+  });
+
+  /**
+   * Agent self-service history: the companion UI calls this with the same
+   * extensionId+token it uses for its WebSocket. An agent only ever sees
+   * their own calls.
+   *   GET /api/history?extensionId=&token=&from=<ms>&to=<ms>&q=<text>
+   */
+  app.get("/api/history", async (req, res) => {
+    const extensionId = agentAuth(req);
+    if (!extensionId) return res.status(401).json({ error: "unauthorized" });
+    if (!store.enabled) {
+      const mine = callLog
+        .list(200)
+        .filter((r) => r.extensionId === extensionId)
+        .map((r) => ({ ...r, durationMs: (r.endedAt ?? Date.now()) - r.startedAt }));
+      return res.json({ calls: mine, persistent: false });
+    }
+    const calls = await store.historyFor(extensionId, {
+      from: req.query.from ? Number(req.query.from) : undefined,
+      to: req.query.to ? Number(req.query.to) : undefined,
+      q: (req.query.q as string) || undefined,
+      limit: Number(req.query.limit) || 200,
+    });
+    res.json({
+      calls: calls.map((r) => ({
+        ...r,
+        durationMs: (r.endedAt ?? Date.now()) - r.startedAt,
+      })),
+      persistent: true,
+    });
   });
 
   /**

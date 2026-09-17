@@ -58,6 +58,11 @@ export function SummaryCard({ summary }: { summary: Omit<SummaryEvent, "type"> }
             ))}
           </dl>
         )}
+        {summary.coaching && (
+          <p className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] italic text-sky-800">
+            Coaching: {summary.coaching}
+          </p>
+        )}
         {summary.keyMoments?.length > 0 && (
           <ul className="mt-2 space-y-1">
             {summary.keyMoments.map((m, i) => (

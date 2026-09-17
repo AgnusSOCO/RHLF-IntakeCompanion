@@ -25,6 +25,7 @@ import { config } from "../config";
  *   "suggestion"       Suggestion
  *   "assist-thinking"  {} — UI shows a pending card while the LLM runs
  *   "checklist"        ChecklistItem[]
+ *   "flags"            CallFlag[] — live risk/moment flags (deduped)
  *   "stt-error"        Error
  */
 const MAX_HISTORY = 12;
@@ -63,6 +64,8 @@ export class CallPipeline {
   private specForText = "";    // normalized interim the spec run covered
   private specEmitted = false; // a suggestion already fired for that utterance
   private specInFlight = false; // spec AI call still resolving
+  private seenFlags = new Set<string>(); // dedupe live flags across extraction passes
+  private lastChecklistItems: ChecklistItem[] = [];
   /** Counters for the per-call record (dashboard metrics). */
   suggestionCount = 0;
   finalCount = 0;
@@ -230,21 +233,34 @@ export class CallPipeline {
     if (this.fullTranscript.length === this.extractedFinals) return;
     this.extractedFinals = this.fullTranscript.length;
     extractChecklist(this.fullTranscript)
-      .then((covered) => {
-        if (!covered) return;
+      .then((result) => {
+        if (!result) return;
         const items: ChecklistItem[] = INTAKE_CHECKLIST.map((f) => ({
           id: f.id,
           label: f.label,
-          covered: f.id in covered,
-          detail: covered[f.id],
+          covered: f.id in result.covered,
+          detail: result.covered[f.id],
         }));
+        this.lastChecklistItems = items;
         this.bus.emit("checklist", items);
+        // New flags only — each pass re-scans the whole transcript window.
+        const fresh = result.flags.filter(
+          (f) => !this.seenFlags.has(f.label.toLowerCase())
+        );
+        if (fresh.length) {
+          for (const f of fresh) this.seenFlags.add(f.label.toLowerCase());
+          this.bus.emit("flags", fresh);
+        }
       })
       .catch(() => {});
   }
 
-  /** Call ended: stop capture, produce the post-call summary (null if none). */
-  async finalize(): Promise<CallSummary | null> {
+  /** Call ended: stop capture; return summary + transcript + coverage for storage. */
+  async finalize(): Promise<{
+    summary: CallSummary | null;
+    transcript: { speaker: string; text: string }[];
+    coverage: { covered: number; total: number };
+  } | null> {
     if (this.finalized) return null;
     this.finalized = true;
     clearInterval(this.checklistTimer);
@@ -252,8 +268,12 @@ export class CallPipeline {
     this.streams.caller.close();
     this.streams.agent.close();
     const summary = await summarizeCall(this.fullTranscript).catch(() => null);
+    const coverage = {
+      covered: this.lastChecklistItems.filter((i) => i.covered).length,
+      total: this.lastChecklistItems.length || INTAKE_CHECKLIST.length,
+    };
     this.bus.removeAllListeners();
-    return summary;
+    return { summary, transcript: this.fullTranscript, coverage };
   }
 
   sendAudio(channel: SpeakerChannel, pcm: Buffer): void {

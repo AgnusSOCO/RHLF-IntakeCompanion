@@ -1,11 +1,15 @@
-import { Lightbulb, ShieldAlert } from "lucide-react";
+import { useEffect, useState } from "react";
+import { History, Lightbulb, Radio, ShieldAlert } from "lucide-react";
 import { CallBanner } from "./components/CallBanner";
 import { ChecklistStrip } from "./components/ChecklistStrip";
+import { FlagStrip } from "./components/FlagStrip";
 import { GuidanceCard, ThinkingCard } from "./components/GuidanceCard";
 import { Header } from "./components/Header";
+import { HistoryView } from "./components/HistoryView";
 import { SummaryCard } from "./components/SummaryCard";
 import { Transcript } from "./components/Transcript";
 import { useAssistant } from "./lib/useAssistant";
+import { cn } from "./lib/utils";
 
 function SectionLabel({ children }: { children: React.ReactNode }) {
   return (
@@ -18,12 +22,20 @@ function SectionLabel({ children }: { children: React.ReactNode }) {
   );
 }
 
+type Tab = "live" | "history";
+
 export default function App() {
   const params = new URLSearchParams(location.search);
   const extensionId = params.get("extensionId");
   const token = params.get("token");
   const { state, setPaused, dismiss, sendFeedback, cardStaleMs } = useAssistant(extensionId, token);
+  const [tab, setTab] = useState<Tab>("live");
   const now = Date.now();
+
+  // A live call always takes priority — snap back to the Live tab on callStart.
+  useEffect(() => {
+    if (state.call.active) setTab("live");
+  }, [state.call.active]);
 
   if (!extensionId || !token) {
     return (
@@ -42,49 +54,86 @@ export default function App() {
       <Header
         conn={state.conn}
         extensionId={extensionId}
+        agentName={state.agentName}
         paused={state.paused}
         callActive={state.call.active}
         onPause={setPaused}
       />
-      <CallBanner
-        active={state.call.active}
-        callerNumber={state.call.callerNumber}
-        startedAt={state.call.startedAt}
-      />
-      <ChecklistStrip items={state.checklist} callActive={state.call.active} />
-      {state.error && (
-        <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-[11px] text-amber-700">
-          Transcription: {state.error}
-        </div>
-      )}
 
-      <SectionLabel>Guidance</SectionLabel>
-      <div className="scroll-slim max-h-[42%] shrink-0 overflow-y-auto px-4 pb-2 pt-2">
-        {state.thinking && <ThinkingCard />}
-        {state.summary && <SummaryCard summary={state.summary} />}
-        <div className="mt-2 flex flex-col gap-2">
-          {state.cards.map((c) => (
-            <GuidanceCard
-              key={c.key}
-              card={c}
-              stale={now - c.receivedAt > cardStaleMs}
-              onDismiss={() => dismiss(c.key)}
-              onFeedback={(h) => sendFeedback(c, h)}
-            />
-          ))}
-        </div>
-        {!state.thinking && state.cards.length === 0 && (
-          <div className="flex items-center gap-2.5 rounded-lg border border-dashed border-zinc-300 bg-white px-3.5 py-3 text-xs text-zinc-500">
-            <Lightbulb className="h-4 w-4 shrink-0 text-zinc-300" />
-            {state.call.active
-              ? "Listening — suggested responses will appear here when you need them."
-              : "Approved responses and AI suggestions will appear here during a call."}
-          </div>
-        )}
+      <div className="flex gap-1 border-b border-zinc-200 bg-white px-4 py-1.5">
+        {(
+          [
+            { id: "live", label: "Live call", icon: Radio },
+            { id: "history", label: "History", icon: History },
+          ] as const
+        ).map(({ id, label, icon: Icon }) => (
+          <button
+            key={id}
+            onClick={() => setTab(id)}
+            className={cn(
+              "flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11.5px] font-medium transition-colors",
+              tab === id
+                ? "bg-zinc-900 text-white"
+                : "text-zinc-500 hover:bg-zinc-100 hover:text-zinc-700"
+            )}
+          >
+            <Icon className="h-3.5 w-3.5" />
+            {label}
+          </button>
+        ))}
       </div>
 
-      <SectionLabel>Transcript</SectionLabel>
-      <Transcript segments={state.segments} interim={state.interim} callActive={state.call.active} />
+      {tab === "history" ? (
+        <HistoryView extensionId={extensionId} token={token} callActive={state.call.active} />
+      ) : (
+        <>
+          <CallBanner
+            active={state.call.active}
+            callerNumber={state.call.callerNumber}
+            startedAt={state.call.startedAt}
+            priorCalls={state.call.priorCalls}
+          />
+          <FlagStrip flags={state.flags} />
+          <ChecklistStrip items={state.checklist} callActive={state.call.active} />
+          {state.error && (
+            <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-[11px] text-amber-700">
+              Transcription: {state.error}
+            </div>
+          )}
+
+          <SectionLabel>Guidance</SectionLabel>
+          <div className="scroll-slim max-h-[42%] shrink-0 overflow-y-auto px-4 pb-2 pt-2">
+            {state.thinking && <ThinkingCard />}
+            {state.summary && <SummaryCard summary={state.summary} />}
+            <div className="mt-2 flex flex-col gap-2">
+              {state.cards.map((c) => (
+                <GuidanceCard
+                  key={c.key}
+                  card={c}
+                  stale={now - c.receivedAt > cardStaleMs}
+                  onDismiss={() => dismiss(c.key)}
+                  onFeedback={(h) => sendFeedback(c, h)}
+                />
+              ))}
+            </div>
+            {!state.thinking && state.cards.length === 0 && !state.summary && (
+              <div className="flex items-center gap-2.5 rounded-lg border border-dashed border-zinc-300 bg-white px-3.5 py-3 text-xs text-zinc-500">
+                <Lightbulb className="h-4 w-4 shrink-0 text-zinc-300" />
+                {state.call.active
+                  ? "Listening — suggested responses will appear here when you need them."
+                  : "Approved responses and AI suggestions will appear here during a call."}
+              </div>
+            )}
+          </div>
+
+          <SectionLabel>Transcript</SectionLabel>
+          <Transcript
+            segments={state.segments}
+            interim={state.interim}
+            callActive={state.call.active}
+          />
+        </>
+      )}
 
       <footer className="flex items-center justify-center gap-1.5 border-t border-zinc-200 bg-white px-4 py-1.5 text-[10px] text-zinc-500">
         <ShieldAlert className="h-3 w-3" />

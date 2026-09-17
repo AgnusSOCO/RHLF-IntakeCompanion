@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import type {
+  CallFlag,
   ChecklistItem,
   GuidanceItem,
   ServerEvent,
@@ -17,20 +18,32 @@ interface Interim {
 
 interface State {
   conn: ConnStatus;
-  call: { active: boolean; callerNumber?: string; startedAt?: number };
+  call: {
+    active: boolean;
+    callerNumber?: string;
+    startedAt?: number;
+    priorCalls?: { count: number; lastAt: number | null };
+  };
+  agentName?: string;
   paused: boolean;
   thinking: boolean;
   segments: TranscriptSegment[];
   interim: Partial<Record<Speaker, Interim>>;
   cards: GuidanceItem[];
   checklist: ChecklistItem[];
+  flags: CallFlag[];
   summary?: Omit<SummaryEvent, "type">;
   error?: string;
 }
 
 type Action =
   | { t: "conn"; v: ConnStatus }
-  | { t: "callStart"; callerNumber?: string }
+  | { t: "agentName"; v?: string }
+  | {
+      t: "callStart";
+      callerNumber?: string;
+      priorCalls?: { count: number; lastAt: number | null };
+    }
   | { t: "callEnd" }
   | { t: "paused"; v: boolean }
   | { t: "thinking" }
@@ -39,6 +52,7 @@ type Action =
   | { t: "final"; speaker: Speaker; text: string; language?: string }
   | { t: "card"; card: GuidanceItem }
   | { t: "checklist"; items: ChecklistItem[] }
+  | { t: "flags"; flags: CallFlag[] }
   | { t: "summary"; v: Omit<SummaryEvent, "type"> }
   | { t: "dismiss"; key: string }
   | { t: "feedback"; key: string; v: "helpful" | "unhelpful" }
@@ -52,12 +66,20 @@ function reducer(s: State, a: Action): State {
   switch (a.t) {
     case "conn":
       return { ...s, conn: a.v };
+    case "agentName":
+      return { ...s, agentName: a.v };
     case "callStart":
       return {
         ...s,
-        call: { active: true, callerNumber: a.callerNumber, startedAt: Date.now() },
+        call: {
+          active: true,
+          callerNumber: a.callerNumber,
+          startedAt: Date.now(),
+          priorCalls: a.priorCalls,
+        },
         cards: [],
         checklist: [],
+        flags: [],
         summary: undefined,
         thinking: false,
         segments: [],
@@ -101,6 +123,11 @@ function reducer(s: State, a: Action): State {
     }
     case "checklist":
       return { ...s, checklist: a.items };
+    case "flags": {
+      const seen = new Set(s.flags.map((f) => f.label.toLowerCase()));
+      const fresh = a.flags.filter((f) => !seen.has(f.label.toLowerCase()));
+      return fresh.length ? { ...s, flags: [...s.flags, ...fresh] } : s;
+    }
     case "summary":
       return { ...s, summary: a.v };
     case "dismiss":
@@ -126,6 +153,7 @@ const initial: State = {
   interim: {},
   cards: [],
   checklist: [],
+  flags: [],
 };
 
 export function useAssistant(extensionId: string | null, token: string | null) {
@@ -163,7 +191,17 @@ export function useAssistant(extensionId: string | null, token: string | null) {
         const m = JSON.parse(ev.data as string) as ServerEvent;
         switch (m.type) {
           case "callStart":
-            dispatch({ t: "callStart", callerNumber: m.callerNumber });
+            dispatch({
+              t: "callStart",
+              callerNumber: m.callerNumber,
+              priorCalls: m.priorCalls,
+            });
+            break;
+          case "agentInfo":
+            dispatch({ t: "agentName", v: m.name ?? undefined });
+            break;
+          case "flags":
+            dispatch({ t: "flags", flags: m.flags });
             break;
           case "callEnd":
             dispatch({ t: "callEnd" });
@@ -199,6 +237,7 @@ export function useAssistant(extensionId: string | null, token: string | null) {
                 summary: m.summary,
                 fields: m.fields,
                 keyMoments: m.keyMoments,
+                coaching: m.coaching,
               },
             });
             break;

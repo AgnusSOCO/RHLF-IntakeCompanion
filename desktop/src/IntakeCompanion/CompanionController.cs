@@ -26,6 +26,7 @@ internal sealed class CompanionController : IDisposable
     private readonly EndpointLoopback _endpointLoopback = new();
     private readonly MicCapture _mic = new();
     private readonly string _processName;
+    private readonly string? _agentName;
     private string _loopbackMode;
 
     private volatile bool _capturing;
@@ -33,9 +34,10 @@ internal sealed class CompanionController : IDisposable
     private volatile string? _sessionId;
 
     public CompanionController(string server, string extensionId, string token,
-        string processName, string loopbackMode)
+        string processName, string loopbackMode, string? agentName = null)
     {
         ExtensionId = extensionId;
+        _agentName = agentName;
         _processName = processName;
 
         int osBuild = Environment.OSVersion.Version.Build;
@@ -98,7 +100,7 @@ internal sealed class CompanionController : IDisposable
             {
                 EmitLog("[net] connecting to backend");
                 await _socket.ConnectAsync(ct);
-                await _socket.SendJsonAsync(new { type = "hello", extensionId = ExtensionId });
+                await _socket.SendJsonAsync(new { type = "hello", extensionId = ExtensionId, name = _agentName });
                 EmitLog($"[net] connected as extension {ExtensionId}; watching '{_processName}'");
                 StateChanged?.Invoke();
                 return;

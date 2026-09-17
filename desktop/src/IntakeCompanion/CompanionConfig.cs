@@ -12,6 +12,7 @@ internal sealed class CompanionConfig
     public string Server { get; set; } = DefaultServer;
     public string? Extension { get; set; }
     public string? Token { get; set; }
+    public string? Name { get; set; }
     public string ProcessName { get; set; } = "RingCentral";
     public string LoopbackMode { get; set; } = "auto";
 

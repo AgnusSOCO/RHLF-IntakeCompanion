@@ -15,6 +15,8 @@ export interface CallRecord {
   suggestions: number;
   feedback: { helpful: number; unhelpful: number };
   summary?: CallSummary;
+  /** Set at call start when this number has called before. */
+  priorCalls?: { count: number; lastAt: number | null };
 }
 
 const MAX_RECORDS = 500;

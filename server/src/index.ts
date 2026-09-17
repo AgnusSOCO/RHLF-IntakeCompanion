@@ -6,15 +6,18 @@ import { ensureTelephonySubscription } from "./ringcentral/subscriptions";
 import { createHttpApp } from "./api/http";
 import { ObjectionEngine } from "./assist/objections";
 import { CallLog } from "./callLog";
+import { Store } from "./store";
 import { Hub } from "./hub";
 
 const tracker = new CallTracker();
 const objections = new ObjectionEngine();
 objections.load();
 const callLog = new CallLog();
-const hub = new Hub(tracker, objections, callLog);
+const store = new Store();
+store.init();
+const hub = new Hub(tracker, objections, callLog, store);
 
-const app = createHttpApp(tracker, hub, callLog);
+const app = createHttpApp(tracker, hub, callLog, store);
 const server = http.createServer(app);
 const wss = new WebSocketServer({ noServer: true });
 
