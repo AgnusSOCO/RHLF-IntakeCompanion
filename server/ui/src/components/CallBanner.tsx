@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { History, Phone } from "lucide-react";
+import { ChevronDown, ChevronUp, History, Phone } from "lucide-react";
 import { cn, formatDuration } from "../lib/utils";
 
 function AudioBars({ active }: { active: boolean }) {
@@ -20,10 +20,16 @@ export function CallBanner({
   active: boolean;
   callerNumber?: string;
   startedAt?: number;
-  priorCalls?: { count: number; lastAt: number | null };
+  priorCalls?: {
+    count: number;
+    lastAt: number | null;
+    lastSummary?: string;
+    lastDisposition?: string;
+  };
   speaking: boolean;
 }) {
   const [now, setNow] = useState(Date.now());
+  const [showPrior, setShowPrior] = useState(false);
   useEffect(() => {
     if (!active) return;
     const t = window.setInterval(() => setNow(Date.now()), 1000);
@@ -45,8 +51,9 @@ export function CallBanner({
           </span>
         )}
         {priorCalls && priorCalls.count > 0 && (
-          <span
-            className="flex items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700"
+          <button
+            onClick={() => setShowPrior((v) => !v)}
+            className="flex items-center gap-1 rounded-full border border-violet-300 bg-violet-50 px-2 py-0.5 text-[10px] font-medium text-violet-700 transition-colors hover:bg-violet-100"
             title={
               priorCalls.lastAt
                 ? `Last call ${new Date(priorCalls.lastAt).toLocaleDateString()}`
@@ -55,12 +62,29 @@ export function CallBanner({
           >
             <History className="h-2.5 w-2.5" />
             Called {priorCalls.count}x before
-          </span>
+            {priorCalls.lastSummary &&
+              (showPrior ? (
+                <ChevronUp className="h-2.5 w-2.5" />
+              ) : (
+                <ChevronDown className="h-2.5 w-2.5" />
+              ))}
+          </button>
         )}
         <span className="ml-auto text-[13px] font-semibold tabular-nums text-zinc-700">
           {startedAt ? formatDuration(now - startedAt) : "0:00"}
         </span>
       </div>
+      {showPrior && priorCalls?.lastSummary && (
+        <div className="fade-in mt-2 rounded-md border border-violet-200 bg-violet-50/60 px-2.5 py-2 pl-3 text-[11.5px] leading-relaxed text-violet-900">
+          <div className="mb-0.5 flex items-center gap-1.5 text-[10px] font-semibold uppercase tracking-wider text-violet-500">
+            Last call
+            {priorCalls.lastAt &&
+              ` · ${new Date(priorCalls.lastAt).toLocaleDateString([], { month: "short", day: "numeric" })}`}
+            {priorCalls.lastDisposition && ` · ${priorCalls.lastDisposition.replace(/_/g, " ")}`}
+          </div>
+          {priorCalls.lastSummary}
+        </div>
+      )}
     </div>
   );
 }

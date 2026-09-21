@@ -264,10 +264,15 @@ export class Store {
     return (rowCount ?? 0) > 0;
   }
 
-  /** Prior call count + most recent call for this caller number. */
+  /** Prior call count + most recent call context for this caller number. */
   async callerHistory(
     callerNumber: string
-  ): Promise<{ count: number; lastAt: number | null }> {
+  ): Promise<{
+    count: number;
+    lastAt: number | null;
+    lastSummary?: string;
+    lastDisposition?: string;
+  }> {
     if (!this.ready || !callerNumber) return { count: 0, lastAt: null };
     try {
       const { rows } = await this.pool!.query(
@@ -275,9 +280,20 @@ export class Store {
          FROM calls WHERE caller_number = $1`,
         [callerNumber]
       );
+      const count = rows[0]?.n ?? 0;
+      if (!count) return { count: 0, lastAt: null };
+      // Pull the most recent call's summary + outcome for the repeat-caller card.
+      const { rows: last } = await this.pool!.query(
+        `SELECT summary->>'summary' AS s, disposition
+         FROM calls WHERE caller_number = $1 AND ended_at IS NOT NULL
+         ORDER BY started_at DESC LIMIT 1`,
+        [callerNumber]
+      );
       return {
-        count: rows[0]?.n ?? 0,
+        count,
         lastAt: rows[0]?.last_at ? new Date(rows[0].last_at).getTime() : null,
+        lastSummary: last[0]?.s ?? undefined,
+        lastDisposition: last[0]?.disposition ?? undefined,
       };
     } catch {
       return { count: 0, lastAt: null };
@@ -568,6 +584,18 @@ export class Store {
         helpfulRate: a.helpful + a.unhelpful ? a.helpful / (a.helpful + a.unhelpful) : null,
       })),
     };
+  }
+
+  /** Admin: full-text search across all calls' transcripts + summaries. */
+  async searchCalls(q: string, limit = 40) {
+    if (!this.ready || !q.trim()) return [];
+    const { rows } = await this.pool!.query(
+      `SELECT * FROM calls
+       WHERE caller_number ILIKE $1 OR summary::text ILIKE $1 OR transcript::text ILIKE $1
+       ORDER BY started_at DESC LIMIT $2`,
+      [`%${q.trim()}%`, Math.min(limit, 100)]
+    );
+    return rows.map((r) => this.rowToRecord(r));
   }
 
   async listAgents(): Promise<AgentRow[]> {

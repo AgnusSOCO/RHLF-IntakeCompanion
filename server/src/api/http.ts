@@ -148,6 +148,20 @@ export function createHttpApp(
     res.send(lines.join("\n"));
   });
 
+  /** Admin full-text search across transcripts, summaries, and caller numbers. */
+  app.get("/api/admin/search", adminAuth, async (req, res) => {
+    const q = String(req.query.q ?? "");
+    if (!q.trim()) return res.json({ calls: [] });
+    const calls = await store.searchCalls(q);
+    res.json({
+      calls: calls.map((r) => ({
+        ...r,
+        agentName: store.agentName(r.extensionId),
+        durationMs: (r.endedAt ?? Date.now()) - r.startedAt,
+      })),
+    });
+  });
+
   /** QA review queue — calls flagged for supervisor attention, with reasons. */
   app.get("/api/admin/qa", adminAuth, async (_req, res) => {
     res.json({ queue: await store.qaQueue() });

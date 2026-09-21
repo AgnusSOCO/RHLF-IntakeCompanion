@@ -22,7 +22,12 @@ interface State {
     active: boolean;
     callerNumber?: string;
     startedAt?: number;
-    priorCalls?: { count: number; lastAt: number | null };
+    priorCalls?: {
+      count: number;
+      lastAt: number | null;
+      lastSummary?: string;
+      lastDisposition?: string;
+    };
   };
   agentName?: string;
   paused: boolean;
@@ -46,7 +51,12 @@ type Action =
   | {
       t: "callStart";
       callerNumber?: string;
-      priorCalls?: { count: number; lastAt: number | null };
+      priorCalls?: {
+        count: number;
+        lastAt: number | null;
+        lastSummary?: string;
+        lastDisposition?: string;
+      };
     }
   | { t: "callEnd" }
   | { t: "paused"; v: boolean }
@@ -262,6 +272,7 @@ export function useAssistant(extensionId: string | null, token: string | null) {
                 fields: m.fields,
                 keyMoments: m.keyMoments,
                 coaching: m.coaching,
+                missingFields: m.missingFields,
               },
             });
             break;
@@ -326,5 +337,13 @@ export function useAssistant(extensionId: string | null, token: string | null) {
     [send]
   );
 
-  return { state, setPaused, dismiss, sendFeedback, cardStaleMs: CARD_STALE_MS };
+  const ask = useCallback(
+    (question: string) => {
+      const q = question.trim();
+      if (q) send({ type: "assist-request", question: q });
+    },
+    [send]
+  );
+
+  return { state, setPaused, dismiss, sendFeedback, ask, cardStaleMs: CARD_STALE_MS };
 }

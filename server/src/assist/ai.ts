@@ -223,6 +223,55 @@ export async function assistWithAi(
 }
 
 /**
+ * Agent-initiated assist: the agent types a question mid-call ("how do I
+ * explain contingency?"). Answers grounded in the live transcript — never
+ * legal advice, always phrased as something the agent can say or do.
+ */
+const ASK_PROMPT = `You are the live-call assistant for Richard Harris Law Firm, a personal-injury intake team in Las Vegas. The INTAKE AGENT (not an attorney) is asking YOU for help during an active call.
+
+Rules:
+- Answer in 1–3 plain sentences the agent can act on immediately.
+- If they ask what to say, give verbatim language in "response" that is warm, honest, and mirrors the caller's language (English/Spanish).
+- Never state legal conclusions, case outcomes, dollar values, or firm deadlines. Route legal judgment to "the attorney will review that".
+- If the question involves medical emergency, self-harm, criminal or immigration matters, or complaints about the firm — set escalate=true and tell the agent to bring in a supervisor.
+
+Output ONLY JSON: {"should_respond": true, "title": "<3-6 word label>", "response": "<answer or verbatim language>", "follow_up": "<optional next intake question>", "escalate": bool}`;
+
+export async function askAssistant(
+  history: { speaker: string; text: string }[],
+  question: string,
+  language?: string,
+  bestPlays?: string[]
+): Promise<AiAssist | null> {
+  if (!config.llmApiKey) return null;
+  const system = bestPlays?.length
+    ? `${ASK_PROMPT}\n\nApproved responses that have worked well on past calls:\n${bestPlays.slice(0, 6).map((p) => `- ${p}`).join("\n")}`
+    : ASK_PROMPT;
+  const content = await callLlm(
+    system,
+    JSON.stringify({
+      caller_language: language ?? "en",
+      recent_transcript: history.slice(-12),
+      agent_question: question,
+    }),
+    320
+  );
+  if (!content) return null;
+  try {
+    const parsed = JSON.parse(content) as RawAi;
+    return {
+      shouldRespond: true,
+      title: parsed.title ?? "Assistant",
+      response: parsed.response ?? "",
+      followUp: parsed.follow_up ?? "",
+      escalate: Boolean(parsed.escalate),
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
  * Periodic intake-progress check: which standard fields has the call covered?
  * Runs every ~12s on finals; cheap (small payload) and latency-independent.
  */

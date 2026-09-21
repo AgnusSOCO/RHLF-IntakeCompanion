@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Check, ClipboardCopy, FileText, Flag } from "lucide-react";
+import { AlertTriangle, Check, ClipboardCopy, FileText, Flag } from "lucide-react";
 import type { SummaryEvent } from "../lib/types";
 import { Button } from "./ui/button";
 
@@ -57,6 +57,17 @@ export function SummaryCard({ summary }: { summary: Omit<SummaryEvent, "type"> }
               </div>
             ))}
           </dl>
+        )}
+        {summary.missingFields && summary.missingFields.length > 0 && (
+          <div className="mt-2 flex flex-wrap items-center gap-1.5 rounded-md border border-amber-200 bg-amber-50 px-2.5 py-1.5">
+            <AlertTriangle className="h-3 w-3 shrink-0 text-amber-600" />
+            <span className="text-[10.5px] font-medium text-amber-800">Not collected:</span>
+            {summary.missingFields.map((f) => (
+              <span key={f} className="rounded-full border border-amber-300 bg-white px-1.5 py-px text-[9.5px] font-medium text-amber-700">
+                {f}
+              </span>
+            ))}
+          </div>
         )}
         {summary.coaching && (
           <p className="mt-2 rounded-md border border-sky-200 bg-sky-50 px-2.5 py-1.5 text-[11px] italic text-sky-800">

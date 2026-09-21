@@ -33,7 +33,12 @@ export interface CallStartEvent {
   telephonySessionId: string;
   agentPartyId?: string;
   callerNumber?: string;
-  priorCalls?: { count: number; lastAt: number | null };
+  priorCalls?: {
+    count: number;
+    lastAt: number | null;
+    lastSummary?: string;
+    lastDisposition?: string;
+  };
 }
 
 export interface CallFlag {
@@ -78,6 +83,8 @@ export interface SummaryEvent {
   fields: Record<string, string>;
   keyMoments: string[];
   coaching?: string;
+  /** Intake fields never collected before the call ended. */
+  missingFields?: string[];
 }
 
 export type ServerEvent =

@@ -1,7 +1,7 @@
 import { EventEmitter } from "node:events";
 import { DeepgramLiveStream, SpeakerChannel, TranscriptResult } from "./stt";
 import { ObjectionEngine, Suggestion } from "../assist/objections";
-import { assistWithAi, extractChecklist, summarizeCall, CallSummary, CallFlag } from "../assist/ai";
+import { assistWithAi, askAssistant, extractChecklist, summarizeCall, CallSummary, CallFlag } from "../assist/ai";
 import { INTAKE_CHECKLIST, ChecklistItem } from "../assist/checklist";
 import { config } from "../config";
 
@@ -247,6 +247,33 @@ export class CallPipeline {
   }
 
   /**
+   * Agent-initiated assist: the UI sent a free-text question mid-call.
+   * Bypasses detection cooldowns — the agent explicitly asked for help.
+   */
+  requestAssist(question: string): void {
+    if (this.finalized || !config.llmApiKey) return;
+    this.bus.emit("assist-thinking", {});
+    const history = [...this.history];
+    Promise.resolve(this.getBestPlays?.())
+      .then((plays) => askAssistant(history, question, undefined, plays))
+      .then((res) => {
+        if (!res) return;
+        this.suggestionCount++;
+        this.bus.emit("suggestion", {
+          kind: "ai",
+          objectionId: `ask-${Date.now()}`,
+          title: res.title,
+          language: "en",
+          response: res.response,
+          followUp: res.followUp,
+          escalate: res.escalate,
+          matchedText: question,
+        } satisfies Suggestion);
+      })
+      .catch((e) => this.bus.emit("stt-error", e));
+  }
+
+  /**
    * Silence watchdog: no transcript activity on either channel for
    * DEAD_AIR_MS -> one nudge per lull (re-arms when speech resumes).
    */
@@ -326,6 +353,7 @@ export class CallPipeline {
     transcript: { speaker: string; text: string }[];
     coverage: { covered: number; total: number };
     flags: CallFlag[];
+    missingFields: string[];
   } | null> {
     if (this.finalized) return null;
     this.finalized = true;
@@ -344,8 +372,17 @@ export class CallPipeline {
       covered: this.lastChecklistItems.filter((i) => i.covered).length,
       total: this.lastChecklistItems.length || INTAKE_CHECKLIST.length,
     };
+    const missingFields = this.lastChecklistItems.length
+      ? this.lastChecklistItems.filter((i) => !i.covered).map((i) => i.label)
+      : [];
     this.bus.removeAllListeners();
-    return { summary, transcript: this.fullTranscript, coverage, flags: this.emittedFlags };
+    return {
+      summary,
+      transcript: this.fullTranscript,
+      coverage,
+      flags: this.emittedFlags,
+      missingFields,
+    };
   }
 
   sendAudio(channel: SpeakerChannel, pcm: Buffer): void {

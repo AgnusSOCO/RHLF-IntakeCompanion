@@ -146,7 +146,10 @@ export class Hub {
     ws.on("message", (data) => {
       try {
         const msg = JSON.parse(data.toString());
-        if (msg.type === "pause" && typeof msg.paused === "boolean") {
+        if (msg.type === "assist-request" && typeof msg.question === "string") {
+          // Agent asked the assistant a free-text question mid-call.
+          e.pipeline?.requestAssist(msg.question.trim().slice(0, 300));
+        } else if (msg.type === "pause" && typeof msg.paused === "boolean") {
           e.pipeline?.setPaused(msg.paused);
           e.companion?.send(JSON.stringify({ type: "pause", paused: msg.paused }));
         } else if (msg.type === "feedback") {
@@ -226,7 +229,7 @@ export class Hub {
       ?.finalize()
       .then((result) => {
         if (!result) return;
-        const { summary, transcript, coverage, flags } = result;
+        const { summary, transcript, coverage, flags, missingFields } = result;
         if (rec) {
           rec.endedAt = Date.now();
           rec.transcriptSegments = pipeline.finalCount;
@@ -239,12 +242,14 @@ export class Hub {
           this.broadcastUi(c.extensionId, {
             type: "summary",
             sessionId: c.telephonySessionId,
+            missingFields,
             ...summary,
           });
           this.broadcastAdmin({
             type: "summary",
             extensionId: c.extensionId,
             sessionId: c.telephonySessionId,
+            missingFields,
             ...summary,
           });
         }

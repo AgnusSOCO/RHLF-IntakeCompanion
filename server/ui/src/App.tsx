@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { History, Lightbulb, Radio, ShieldAlert } from "lucide-react";
 import { CallBanner } from "./components/CallBanner";
+import { AskBar } from "./components/AskBar";
 import { CallerCard } from "./components/CallerCard";
 import { ChecklistStrip } from "./components/ChecklistStrip";
 import { DispositionBar } from "./components/DispositionBar";
@@ -30,7 +31,7 @@ export default function App() {
   const params = new URLSearchParams(location.search);
   const extensionId = params.get("extensionId");
   const token = params.get("token");
-  const { state, setPaused, dismiss, sendFeedback, cardStaleMs } = useAssistant(extensionId, token);
+  const { state, setPaused, dismiss, sendFeedback, ask, cardStaleMs } = useAssistant(extensionId, token);
   const [tab, setTab] = useState<Tab>("live");
   const now = Date.now();
 
@@ -38,6 +39,25 @@ export default function App() {
   useEffect(() => {
     if (state.call.active) setTab("live");
   }, [state.call.active]);
+
+  // Keyboard-first card actions during a call: d=dismiss, c=copy,
+  // 1/2 = thumbs up/down on the newest card. Skips while typing.
+  useEffect(() => {
+    if (!state.call.active) return;
+    const onKey = (e: KeyboardEvent) => {
+      const el = document.activeElement;
+      if (el instanceof HTMLInputElement || el instanceof HTMLTextAreaElement) return;
+      const top = state.cards[0];
+      if (!top) return;
+      if (e.key === "d") dismiss(top.key);
+      else if (e.key === "c") {
+        navigator.clipboard?.writeText(top.response || top.title).catch(() => {});
+      } else if (e.key === "1") sendFeedback(top, true);
+      else if (e.key === "2") sendFeedback(top, false);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [state.call.active, state.cards, dismiss, sendFeedback]);
 
   if (!extensionId || !token) {
     return (
@@ -153,6 +173,11 @@ export default function App() {
             segments={state.segments}
             interim={state.interim}
             callActive={state.call.active}
+          />
+          <AskBar
+            callActive={state.call.active}
+            thinking={state.thinking}
+            onAsk={ask}
           />
         </div>
       )}
