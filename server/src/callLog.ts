@@ -17,6 +17,8 @@ export interface CallRecord {
   summary?: CallSummary;
   /** Set at call start when this number has called before. */
   priorCalls?: { count: number; lastAt: number | null };
+  /** Every suggestion shown during the call — feeds objection analytics. */
+  suggestionEvents?: { kind: string; title: string; escalate?: boolean; at: number }[];
 }
 
 const MAX_RECORDS = 500;

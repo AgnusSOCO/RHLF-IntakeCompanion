@@ -64,6 +64,8 @@ CREATE TABLE IF NOT EXISTS calls (
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS flags JSONB;
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS disposition TEXT;
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS disposition_at TIMESTAMPTZ;
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS suggestion_events JSONB;
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS languages JSONB;
 CREATE INDEX IF NOT EXISTS calls_ext_started ON calls (extension_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS calls_caller ON calls (caller_number);
 CREATE TABLE IF NOT EXISTS plays (
@@ -143,12 +145,18 @@ export class Store {
     flags: CallFlag[] = []
   ): Promise<void> {
     if (!this.ready) return;
+    const languages = [
+      ...new Set(
+        transcript.map((t: any) => t.language).filter((l): l is string => Boolean(l))
+      ),
+    ];
     await this.pool!.query(
       `INSERT INTO calls
         (session_id, extension_id, caller_number, started_at, ended_at,
          transcript_segments, suggestions, helpful, unhelpful,
-         coverage, coverage_total, summary, transcript, flags)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         coverage, coverage_total, summary, transcript, flags,
+         suggestion_events, languages)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
        ON CONFLICT (session_id) DO UPDATE SET
          ended_at = EXCLUDED.ended_at,
          transcript_segments = EXCLUDED.transcript_segments,
@@ -159,7 +167,9 @@ export class Store {
          coverage_total = EXCLUDED.coverage_total,
          summary = EXCLUDED.summary,
          transcript = EXCLUDED.transcript,
-         flags = EXCLUDED.flags`,
+         flags = EXCLUDED.flags,
+         suggestion_events = EXCLUDED.suggestion_events,
+         languages = EXCLUDED.languages`,
       [
         rec.sessionId,
         rec.extensionId,
@@ -175,6 +185,8 @@ export class Store {
         rec.summary ? JSON.stringify(rec.summary) : null,
         JSON.stringify(transcript),
         JSON.stringify(flags),
+        rec.suggestionEvents?.length ? JSON.stringify(rec.suggestionEvents) : null,
+        languages.length ? JSON.stringify(languages) : null,
       ]
     ).catch((e) => console.error("[store] saveCall:", e.message));
   }
@@ -421,6 +433,141 @@ export class Store {
       if (queue.length >= limit) break;
     }
     return queue;
+  }
+
+  /**
+   * Aggregate analytics for the dashboard over a trailing window.
+   * Computed in JS — call volumes are small enough that one scan beats
+   * a pile of SQL, and it keeps every metric consistent.
+   */
+  async analytics(days = 30) {
+    if (!this.ready) return null;
+    const since = new Date(Date.now() - days * 86400e3);
+    const { rows } = await this.pool!.query(
+      `SELECT session_id, extension_id, caller_number, started_at, ended_at,
+              transcript_segments, suggestions, helpful, unhelpful,
+              coverage, coverage_total, flags, disposition, suggestion_events, languages
+       FROM calls WHERE started_at >= $1 ORDER BY started_at`,
+      [since]
+    );
+
+    const byDay = new Map<string, { calls: number; signed: number; alerts: number }>();
+    const funnel = { total: 0, signed: 0, callback: 0, attorneyReview: 0, notQualified: 0, spam: 0, none: 0 };
+    const suggMap = new Map<string, { count: number; kind: string; escalations: number }>();
+    const flagMap = new Map<string, { count: number; severity: string }>();
+    const peakHours = Array.from({ length: 7 }, () => new Array<number>(24).fill(0));
+    const languages = { en: 0, es: 0, mixed: 0, unknown: 0 };
+    const seenCallers = new Set<string>();
+    let repeatCalls = 0;
+    let durationSum = 0, durationN = 0;
+    let coverageSum = 0, coverageN = 0;
+    let helpfulSum = 0, feedbackN = 0;
+    const perAgent = new Map<string, { calls: number; signed: number; durationSum: number; covSum: number; covN: number; helpful: number; unhelpful: number }>();
+
+    for (const r of rows) {
+      const started = new Date(r.started_at);
+      const day = started.toISOString().slice(0, 10);
+      const alerts = (r.flags ?? []).filter((f: any) => f.severity === "alert").length;
+      const d = byDay.get(day) ?? { calls: 0, signed: 0, alerts: 0 };
+      d.calls++;
+      if (r.disposition === "signed") d.signed++;
+      d.alerts += alerts;
+      byDay.set(day, d);
+
+      funnel.total++;
+      if (r.disposition === "signed") funnel.signed++;
+      else if (r.disposition === "callback") funnel.callback++;
+      else if (r.disposition === "attorney_review") funnel.attorneyReview++;
+      else if (r.disposition === "not_qualified") funnel.notQualified++;
+      else if (r.disposition === "spam") funnel.spam++;
+      else funnel.none++;
+
+      peakHours[started.getDay()][started.getHours()]++;
+
+      if (r.caller_number) {
+        if (seenCallers.has(r.caller_number)) repeatCalls++;
+        seenCallers.add(r.caller_number);
+      }
+      if (r.ended_at) {
+        durationSum += new Date(r.ended_at).getTime() - started.getTime();
+        durationN++;
+      }
+      if (r.coverage_total > 0) {
+        coverageSum += r.coverage / r.coverage_total;
+        coverageN++;
+      }
+      if (r.helpful + r.unhelpful > 0) {
+        helpfulSum += r.helpful / (r.helpful + r.unhelpful);
+        feedbackN++;
+      }
+
+      const langs: string[] = r.languages ?? [];
+      const hasEs = langs.some((l) => l?.startsWith("es"));
+      const hasEn = langs.some((l) => l?.startsWith("en"));
+      if (hasEs && hasEn) languages.mixed++;
+      else if (hasEs) languages.es++;
+      else if (hasEn) languages.en++;
+      else languages.unknown++;
+
+      for (const f of r.flags ?? []) {
+        const e = flagMap.get(f.label) ?? { count: 0, severity: f.severity };
+        e.count++;
+        flagMap.set(f.label, e);
+      }
+      for (const s of r.suggestion_events ?? []) {
+        const key = `${s.kind}|${s.title}`;
+        const e = suggMap.get(key) ?? { count: 0, kind: s.kind, escalations: 0 };
+        e.count++;
+        if (s.escalate) e.escalations++;
+        suggMap.set(key, e);
+      }
+
+      const a = perAgent.get(r.extension_id) ?? { calls: 0, signed: 0, durationSum: 0, covSum: 0, covN: 0, helpful: 0, unhelpful: 0 };
+      a.calls++;
+      if (r.disposition === "signed") a.signed++;
+      if (r.ended_at) a.durationSum += new Date(r.ended_at).getTime() - started.getTime();
+      if (r.coverage_total > 0) { a.covSum += r.coverage / r.coverage_total; a.covN++; }
+      a.helpful += r.helpful;
+      a.unhelpful += r.unhelpful;
+      perAgent.set(r.extension_id, a);
+    }
+
+    return {
+      rangeDays: days,
+      totals: {
+        calls: funnel.total,
+        signed: funnel.signed,
+        signedRate: funnel.total ? funnel.signed / funnel.total : 0,
+        repeatCalls,
+        repeatRate: funnel.total ? repeatCalls / funnel.total : 0,
+        avgDurationMs: durationN ? durationSum / durationN : 0,
+        avgCoverage: coverageN ? coverageSum / coverageN : 0,
+        helpfulRate: feedbackN ? helpfulSum / feedbackN : null,
+        alerts: [...byDay.values()].reduce((n, d) => n + d.alerts, 0),
+      },
+      funnel,
+      callsByDay: [...byDay.entries()].map(([date, v]) => ({ date, ...v })),
+      topSuggestions: [...suggMap.entries()]
+        .map(([k, v]) => ({ title: k.split("|").slice(1).join("|"), ...v }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 15),
+      topFlags: [...flagMap.entries()]
+        .map(([label, v]) => ({ label, ...v }))
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 12),
+      peakHours,
+      languages,
+      perAgent: [...perAgent.entries()].map(([extensionId, a]) => ({
+        extensionId,
+        name: this.agentNames.get(extensionId),
+        calls: a.calls,
+        signed: a.signed,
+        conversionRate: a.calls ? a.signed / a.calls : 0,
+        avgDurationMs: a.calls ? a.durationSum / a.calls : 0,
+        avgCoverage: a.covN ? a.covSum / a.covN : 0,
+        helpfulRate: a.helpful + a.unhelpful ? a.helpful / (a.helpful + a.unhelpful) : null,
+      })),
+    };
   }
 
   async listAgents(): Promise<AgentRow[]> {

@@ -267,8 +267,18 @@ export class Hub {
       this.broadcastUi(extensionId, msg);
       this.broadcastAdmin({ extensionId, ...(msg as object) });
     };
+    const rec = this.callLog.get(sessionId);
     pipeline.bus.on("transcript", (t) => fanOut({ type: "transcript", ...t }));
-    pipeline.bus.on("suggestion", (s) => fanOut({ type: "suggestion", ...s }));
+    pipeline.bus.on("suggestion", (s) => {
+      // Track every surfaced card for objection/suggestion analytics.
+      (rec!.suggestionEvents ??= []).push({
+        kind: s.kind,
+        title: s.title,
+        escalate: s.escalate,
+        at: Date.now(),
+      });
+      fanOut({ type: "suggestion", ...s });
+    });
     pipeline.bus.on("checklist", (items) => fanOut({ type: "checklist", items }));
     pipeline.bus.on("fields", (fields) => fanOut({ type: "fields", fields }));
     pipeline.bus.on("flags", (flags) => fanOut({ type: "flags", flags }));

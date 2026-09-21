@@ -104,6 +104,50 @@ export function createHttpApp(
     res.json(result);
   });
 
+  /** Aggregate analytics: volume, funnel, coverage, suggestions, peak hours. */
+  app.get("/api/admin/analytics", adminAuth, async (req, res) => {
+    const days = Math.min(Number(req.query.days) || 30, 365);
+    const data = await store.analytics(days);
+    if (!data) return res.status(503).json({ error: "no database" });
+    res.json(data);
+  });
+
+  /** CSV export of call records for the firm's own reporting. */
+  app.get("/api/admin/calls.csv", adminAuth, async (req, res) => {
+    const days = Math.min(Number(req.query.days) || 30, 365);
+    const rows = store.enabled ? await store.listCalls(2000) : callLog.list(2000);
+    const since = Date.now() - days * 86400e3;
+    const esc = (v: unknown) => `"${String(v ?? "").replace(/"/g, '""')}"`;
+    const lines = [
+      "session_id,extension_id,agent,caller_number,started_at,ended_at,duration_s,segments,suggestions,helpful,unhelpful,coverage,coverage_total,disposition,alerts,summary",
+      ...rows
+        .filter((r) => r.startedAt >= since)
+        .map((r) =>
+          [
+            r.sessionId,
+            r.extensionId,
+            esc(store.agentName(r.extensionId) ?? ""),
+            esc(r.callerNumber),
+            new Date(r.startedAt).toISOString(),
+            r.endedAt ? new Date(r.endedAt).toISOString() : "",
+            r.endedAt ? Math.round((r.endedAt - r.startedAt) / 1000) : "",
+            r.transcriptSegments,
+            r.suggestions,
+            r.feedback.helpful,
+            r.feedback.unhelpful,
+            (r as any).coverage ?? "",
+            (r as any).coverageTotal ?? "",
+            (r as any).disposition ?? "",
+            ((r as any).flags ?? []).filter((f: any) => f.severity === "alert").length,
+            esc(r.summary?.summary ?? ""),
+          ].join(",")
+        ),
+    ];
+    res.setHeader("content-type", "text/csv");
+    res.setHeader("content-disposition", `attachment; filename="rhlf-calls-${days}d.csv"`);
+    res.send(lines.join("\n"));
+  });
+
   /** QA review queue — calls flagged for supervisor attention, with reasons. */
   app.get("/api/admin/qa", adminAuth, async (_req, res) => {
     res.json({ queue: await store.qaQueue() });

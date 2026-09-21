@@ -58,8 +58,8 @@ export class CallPipeline {
   readonly bus = new EventEmitter();
   private streams: Record<SpeakerChannel, DeepgramLiveStream>;
   private paused = false;
-  private history: { speaker: string; text: string }[] = [];
-  private fullTranscript: { speaker: string; text: string }[] = [];
+  private history: { speaker: string; text: string; language?: string }[] = [];
+  private fullTranscript: { speaker: string; text: string; language?: string }[] = [];
   private aiInFlight = 0;
   private lastAiAt = 0;
   private extractedFinals = 0;
@@ -112,7 +112,7 @@ export class CallPipeline {
     this.deadAirFired = false;
     this.bus.emit("transcript", r);
     if (r.isFinal) {
-      const entry = { speaker: r.speaker, text: r.text };
+      const entry = { speaker: r.speaker, text: r.text, language: r.language };
       this.history.push(entry);
       if (this.history.length > MAX_HISTORY) this.history.shift();
       this.fullTranscript.push(entry);
