@@ -53,6 +53,8 @@ interface EvalInput {
   fields: Record<string, string>;
   flags: CallFlag[];
   elapsedMs: number;
+  /** Steps the agent manually checked off in the UI. */
+  doneIds?: ReadonlySet<string>;
 }
 
 export class ScriptEngine {
@@ -103,6 +105,7 @@ export class ScriptEngine {
           text: st.text,
           done:
             (st.field ? st.field in input.covered : false) ||
+            (input.doneIds?.has(st.id) ?? false) ||
             (typeof st.autoAfter === "number" &&
               st.autoAfter >= 0 &&
               input.elapsedMs >= st.autoAfter * 1000),

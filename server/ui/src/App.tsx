@@ -32,7 +32,7 @@ export default function App() {
   const params = new URLSearchParams(location.search);
   const extensionId = params.get("extensionId");
   const token = params.get("token");
-  const { state, setPaused, dismiss, sendFeedback, ask, cardStaleMs } = useAssistant(extensionId, token);
+  const { state, setPaused, dismiss, sendFeedback, ask, markStepDone, cardStaleMs } = useAssistant(extensionId, token);
   const [tab, setTab] = useState<Tab>("live");
   const now = Date.now();
 
@@ -122,7 +122,7 @@ export default function App() {
             speaking={state.speaking}
           />
           <FlagStrip flags={state.flags} />
-          <ScriptPanel script={state.script} callActive={state.call.active} />
+          <ScriptPanel script={state.script} callActive={state.call.active} onMarkDone={markStepDone} />
           <CallerCard
             fields={state.liveFields}
             callActive={state.call.active}

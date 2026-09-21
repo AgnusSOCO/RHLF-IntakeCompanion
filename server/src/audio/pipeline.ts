@@ -77,6 +77,7 @@ export class CallPipeline {
   private lastChecklistItems: ChecklistItem[] = [];
   private lastCovered: Record<string, string> = {};
   private lastScriptJson = "";
+  private manualScriptDone = new Set<string>();
   private readonly startedAt = Date.now();
   private lastActivityAt = Date.now();
   private deadAirFired = false;
@@ -251,6 +252,13 @@ export class CallPipeline {
       .finally(() => this.aiInFlight--);
   }
 
+  /** Agent tapped a pending script step to mark it done manually. */
+  markScriptStepDone(stepId: string): void {
+    if (this.finalized || !stepId) return;
+    this.manualScriptDone.add(stepId.slice(0, 64));
+    this.refreshScript();
+  }
+
   /**
    * Agent-initiated assist: the UI sent a free-text question mid-call.
    * Bypasses detection cooldowns — the agent explicitly asked for help.
@@ -290,6 +298,7 @@ export class CallPipeline {
       fields: this.liveFields,
       flags: this.emittedFlags,
       elapsedMs: Date.now() - this.startedAt,
+      doneIds: this.manualScriptDone,
     });
     const json = JSON.stringify(state);
     if (json !== this.lastScriptJson) {

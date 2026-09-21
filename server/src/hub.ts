@@ -151,6 +151,8 @@ export class Hub {
         if (msg.type === "assist-request" && typeof msg.question === "string") {
           // Agent asked the assistant a free-text question mid-call.
           e.pipeline?.requestAssist(msg.question.trim().slice(0, 300));
+        } else if (msg.type === "script-done" && typeof msg.stepId === "string") {
+          e.pipeline?.markScriptStepDone(msg.stepId);
         } else if (msg.type === "pause" && typeof msg.paused === "boolean") {
           e.pipeline?.setPaused(msg.paused);
           e.companion?.send(JSON.stringify({ type: "pause", paused: msg.paused }));

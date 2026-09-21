@@ -12,9 +12,11 @@ import type { ScriptState } from "../lib/types";
 export function ScriptPanel({
   script,
   callActive,
+  onMarkDone,
 }: {
   script?: ScriptState;
   callActive: boolean;
+  onMarkDone?: (stepId: string) => void;
 }) {
   const [expanded, setExpanded] = useState(false);
   const [justDone, setJustDone] = useState<string | null>(null);
@@ -103,23 +105,26 @@ export function ScriptPanel({
                   <div
                     key={st.id}
                     className={cn(
-                      "mt-1 flex items-start gap-2 rounded px-1.5 py-1",
+                      "group mt-1 flex items-start gap-2 rounded px-1.5 py-1",
                       isCurrent && "bg-zinc-100"
                     )}
                   >
-                    <span
+                    <button
+                      onClick={() => !st.done && onMarkDone?.(st.id)}
+                      disabled={st.done || !onMarkDone}
+                      title={st.done ? "Covered" : "Mark done"}
                       className={cn(
-                        "mt-0.5 grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border",
+                        "mt-0.5 grid h-3.5 w-3.5 shrink-0 place-items-center rounded-full border transition-colors",
                         st.done
                           ? "border-emerald-500 bg-emerald-500 text-white"
                           : isCurrent
-                            ? "border-zinc-800"
-                            : "border-zinc-300",
+                            ? "border-zinc-800 hover:bg-zinc-800 hover:text-white"
+                            : "border-zinc-300 text-transparent hover:border-emerald-500 hover:bg-emerald-500 hover:text-white",
                         justDone === st.id && "chip-pop"
                       )}
                     >
-                      {st.done && <Check className="h-2.5 w-2.5" />}
-                    </span>
+                      {(st.done || onMarkDone) && <Check className="h-2.5 w-2.5" />}
+                    </button>
                     <div className="min-w-0">
                       <div
                         className={cn(

@@ -354,5 +354,10 @@ export function useAssistant(extensionId: string | null, token: string | null) {
     [send]
   );
 
-  return { state, setPaused, dismiss, sendFeedback, ask, cardStaleMs: CARD_STALE_MS };
+  const markStepDone = useCallback(
+    (stepId: string) => send({ type: "script-done", stepId }),
+    [send]
+  );
+
+  return { state, setPaused, dismiss, sendFeedback, ask, markStepDone, cardStaleMs: CARD_STALE_MS };
 }
