@@ -2,6 +2,32 @@
   "_comment": "Dynamic intake script for Richard Harris Law Firm. Sections evaluate top-to-bottom; a section appears when its `when` condition matches (field value regex or flag label regex — omit for always-on). Steps auto-complete when their `field` is covered by the live extraction pass, or when `autoAfter` seconds have elapsed since call start. The UI highlights the first incomplete step as the current beat.",
   "sections": [
     {
+      "id": "emergency",
+      "title": "Emergency — escalate now",
+      "when": { "flag": "emergency|danger|hurt now|harm" },
+      "steps": [
+        {
+          "id": "emergency_escalate",
+          "label": "Immediate danger",
+          "text": "If you're in danger or need medical help right now, please call 911 first. I'm also getting my supervisor on the line right away.",
+          "autoAfter": -1
+        }
+      ]
+    },
+    {
+      "id": "represented_wrap",
+      "title": "Already represented — wrap",
+      "when": { "flag": "represent" },
+      "steps": [
+        {
+          "id": "represented_note",
+          "label": "Caller has counsel",
+          "text": "Since you're already working with an attorney, I'd recommend directing questions to them — but let me note your details and have our team confirm whether we can help.",
+          "autoAfter": -1
+        }
+      ]
+    },
+    {
       "id": "opening",
       "title": "Opening",
       "steps": [
@@ -137,32 +163,6 @@
           "id": "next_step",
           "label": "Next step",
           "text": "Here's what happens next: I'm passing everything to an attorney for review — consultations are completely free, and you pay nothing unless we recover money for you. Do you have any questions for me?",
-          "autoAfter": -1
-        }
-      ]
-    },
-    {
-      "id": "represented_wrap",
-      "title": "Already represented — wrap",
-      "when": { "flag": "represent" },
-      "steps": [
-        {
-          "id": "represented_note",
-          "label": "Caller has counsel",
-          "text": "Since you're already working with an attorney, I'd recommend directing questions to them — but let me note your details and have our team confirm whether we can help.",
-          "autoAfter": -1
-        }
-      ]
-    },
-    {
-      "id": "emergency",
-      "title": "Emergency — escalate now",
-      "when": { "flag": "emergency|danger|hurt now|harm" },
-      "steps": [
-        {
-          "id": "emergency_escalate",
-          "label": "Immediate danger",
-          "text": "If you're in danger or need medical help right now, please call 911 first. I'm also getting my supervisor on the line right away.",
           "autoAfter": -1
         }
       ]
