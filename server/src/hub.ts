@@ -255,7 +255,12 @@ export class Hub {
   private startPipeline(extensionId: string, sessionId: string): void {
     const e = this.entry(extensionId);
     e.pipeline?.dispose();
-    const pipeline = new CallPipeline(sessionId, extensionId, this.objections);
+    const pipeline = new CallPipeline(
+      sessionId,
+      extensionId,
+      this.objections,
+      () => this.store.bestPlays()
+    );
     e.pipeline = pipeline;
 
     const fanOut = (msg: unknown) => {
@@ -265,6 +270,7 @@ export class Hub {
     pipeline.bus.on("transcript", (t) => fanOut({ type: "transcript", ...t }));
     pipeline.bus.on("suggestion", (s) => fanOut({ type: "suggestion", ...s }));
     pipeline.bus.on("checklist", (items) => fanOut({ type: "checklist", items }));
+    pipeline.bus.on("fields", (fields) => fanOut({ type: "fields", fields }));
     pipeline.bus.on("flags", (flags) => fanOut({ type: "flags", flags }));
     pipeline.bus.on("stt-error", (err) => {
       console.error(`[stt] ext=${extensionId}: ${err.message}`);

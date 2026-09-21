@@ -2,6 +2,7 @@ import { useState } from "react";
 import {
   AlertTriangle,
   Check,
+  Compass,
   Copy,
   CornerDownRight,
   MessageCircleQuestion,
@@ -40,6 +41,12 @@ const KIND_META = {
     Icon: Sparkles,
     accent: "border-l-violet-500",
     tile: "bg-violet-50 text-violet-600",
+  },
+  nudge: {
+    label: "Nudge",
+    Icon: Compass,
+    accent: "border-l-teal-500",
+    tile: "bg-teal-50 text-teal-600",
   },
 } as const;
 

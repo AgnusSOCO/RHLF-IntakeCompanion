@@ -24,7 +24,7 @@ export interface PlaybookEntry {
   escalate?: boolean;
 }
 
-export type SuggestionKind = "objection" | "faq" | "question" | "ai";
+export type SuggestionKind = "objection" | "faq" | "question" | "ai" | "nudge";
 
 export interface Suggestion {
   kind: SuggestionKind;

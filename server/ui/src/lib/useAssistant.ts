@@ -33,6 +33,8 @@ interface State {
   interim: Partial<Record<Speaker, Interim>>;
   cards: GuidanceItem[];
   checklist: ChecklistItem[];
+  /** Live caller-card values extracted as the call progresses. */
+  liveFields: Record<string, string>;
   flags: CallFlag[];
   summary?: Omit<SummaryEvent, "type">;
   error?: string;
@@ -55,6 +57,7 @@ type Action =
   | { t: "final"; speaker: Speaker; text: string; language?: string }
   | { t: "card"; card: GuidanceItem }
   | { t: "checklist"; items: ChecklistItem[] }
+  | { t: "fields"; fields: Record<string, string> }
   | { t: "flags"; flags: CallFlag[] }
   | { t: "summary"; v: Omit<SummaryEvent, "type"> }
   | { t: "dismiss"; key: string }
@@ -82,6 +85,7 @@ function reducer(s: State, a: Action): State {
         },
         cards: [],
         checklist: [],
+        liveFields: {},
         flags: [],
         speaking: false,
         summary: undefined,
@@ -129,6 +133,8 @@ function reducer(s: State, a: Action): State {
     }
     case "checklist":
       return { ...s, checklist: a.items };
+    case "fields":
+      return { ...s, liveFields: { ...s.liveFields, ...a.fields } };
     case "flags": {
       const seen = new Set(s.flags.map((f) => f.label.toLowerCase()));
       const fresh = a.flags.filter((f) => !seen.has(f.label.toLowerCase()));
@@ -160,6 +166,7 @@ const initial: State = {
   interim: {},
   cards: [],
   checklist: [],
+  liveFields: {},
   flags: [],
 };
 
@@ -242,6 +249,9 @@ export function useAssistant(extensionId: string | null, token: string | null) {
             break;
           case "checklist":
             dispatch({ t: "checklist", items: m.items });
+            break;
+          case "fields":
+            dispatch({ t: "fields", fields: m.fields });
             break;
           case "summary":
             dispatch({

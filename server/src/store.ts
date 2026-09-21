@@ -66,6 +66,14 @@ ALTER TABLE calls ADD COLUMN IF NOT EXISTS disposition TEXT;
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS disposition_at TIMESTAMPTZ;
 CREATE INDEX IF NOT EXISTS calls_ext_started ON calls (extension_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS calls_caller ON calls (caller_number);
+CREATE TABLE IF NOT EXISTS plays (
+  id SERIAL PRIMARY KEY,
+  title TEXT NOT NULL,
+  text TEXT NOT NULL,
+  source_session_id TEXT,
+  created_by TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
 `;
 
 const PAIRING_TTL_MS = 15 * 60 * 1000;
@@ -78,6 +86,7 @@ export class Store {
   private pool?: pg.Pool;
   private agentNames = new Map<string, string>();
   private agentTokenHashes = new Map<string, string>();
+  private playTexts: string[] = []; // cached best plays, injected into AI prompts
   private ready = false;
 
   constructor() {
@@ -101,6 +110,10 @@ export class Store {
         if (r.name) this.agentNames.set(r.extension_id, r.name);
         if (r.token_hash) this.agentTokenHashes.set(r.extension_id, r.token_hash);
       }
+      const plays = await this.pool!.query(
+        "SELECT title, text FROM plays ORDER BY created_at DESC LIMIT 12"
+      );
+      this.playTexts = plays.rows.map((p) => `${p.title}: ${p.text}`);
       this.ready = true;
       console.log(`[store] postgres ready (${this.agentNames.size} named agents)`);
     } catch (e) {
@@ -340,6 +353,74 @@ export class Store {
       avgCoverage: r.avg_coverage,
       lastCallAt: r.last_call_at ? new Date(r.last_call_at).getTime() : null,
     }));
+  }
+
+  /**
+   * Supervisor-promoted "best plays" — responses that converted on real calls.
+   * The pipeline injects these into AI prompts so one agent's win compounds.
+   */
+  async bestPlays(): Promise<string[]> {
+    return this.playTexts;
+  }
+
+  async listPlays() {
+    if (!this.ready) return [];
+    const { rows } = await this.pool!.query(
+      "SELECT * FROM plays ORDER BY created_at DESC LIMIT 50"
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      title: r.title,
+      text: r.text,
+      sourceSessionId: r.source_session_id ?? undefined,
+      createdBy: r.created_by ?? undefined,
+      createdAt: new Date(r.created_at).getTime(),
+    }));
+  }
+
+  async addPlay(
+    title: string,
+    text: string,
+    sourceSessionId?: string,
+    createdBy?: string
+  ): Promise<number | null> {
+    if (!this.ready) return null;
+    const { rows } = await this.pool!.query(
+      `INSERT INTO plays (title, text, source_session_id, created_by)
+       VALUES ($1, $2, $3, $4) RETURNING id`,
+      [title.slice(0, 120), text.slice(0, 600), sourceSessionId ?? null, createdBy ?? null]
+    );
+    this.playTexts.unshift(`${title}: ${text}`);
+    this.playTexts = this.playTexts.slice(0, 12);
+    return rows[0]?.id ?? null;
+  }
+
+  /**
+   * QA review queue: recent calls that need a supervisor's eyes, with the
+   * reasons they surfaced. Pure read — computed over the calls table.
+   */
+  async qaQueue(limit = 50) {
+    if (!this.ready) return [];
+    const { rows } = await this.pool!.query(
+      `SELECT * FROM calls WHERE ended_at IS NOT NULL
+       ORDER BY started_at DESC LIMIT $1`,
+      [Math.min(limit * 3, 300)]
+    );
+    const queue: any[] = [];
+    for (const r of rows) {
+      const reasons: string[] = [];
+      const cov = r.coverage_total > 0 ? r.coverage / r.coverage_total : null;
+      if (cov !== null && cov < 0.5) reasons.push("low_coverage");
+      if ((r.flags ?? []).some((f: any) => f.severity === "alert"))
+        reasons.push("alert_flag");
+      if (r.unhelpful > r.helpful && r.unhelpful > 0) reasons.push("unhelpful_suggestions");
+      if (!r.disposition) reasons.push("no_disposition");
+      if (!r.summary) reasons.push("no_summary");
+      if (!reasons.length) continue;
+      queue.push({ ...this.rowToRecord(r), qaReasons: reasons });
+      if (queue.length >= limit) break;
+    }
+    return queue;
   }
 
   async listAgents(): Promise<AgentRow[]> {

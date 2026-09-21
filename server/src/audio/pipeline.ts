@@ -25,6 +25,7 @@ import { config } from "../config";
  *   "suggestion"       Suggestion
  *   "assist-thinking"  {} — UI shows a pending card while the LLM runs
  *   "checklist"        ChecklistItem[]
+ *   "fields"           Record<string,string> — live caller-card values (deduped)
  *   "flags"            CallFlag[] — live risk/moment flags (deduped)
  *   "stt-error"        Error
  */
@@ -32,6 +33,10 @@ const MAX_HISTORY = 12;
 const MAX_AI_IN_FLIGHT = 2;
 const AI_COOLDOWN_MS = 8_000;
 const CHECKLIST_INTERVAL_MS = 12_000;
+// Dead-air: this long with no transcript activity on either channel nudges
+// the agent to re-engage before the caller cools off.
+const DEAD_AIR_MS = 6_000;
+const DEAD_AIR_POLL_MS = 1_000;
 // Speculative assist: when a caller interim stops changing for this long we
 // run detection/AI before the final transcript arrives — suggestion lands
 // ~endpointing+LLM sooner, so the agent sees it as the caller finishes.
@@ -66,7 +71,12 @@ export class CallPipeline {
   private specInFlight = false; // spec AI call still resolving
   private seenFlags = new Set<string>(); // dedupe live flags across extraction passes
   private emittedFlags: CallFlag[] = []; // persisted on the call record
+  private seenNudges = new Set<string>(); // dedupe empathy/compliance nudges
+  private liveFields: Record<string, string> = {};
   private lastChecklistItems: ChecklistItem[] = [];
+  private lastActivityAt = Date.now();
+  private deadAirFired = false;
+  private deadAirTimer?: NodeJS.Timeout;
   /** Counters for the per-call record (dashboard metrics). */
   suggestionCount = 0;
   finalCount = 0;
@@ -74,7 +84,8 @@ export class CallPipeline {
   constructor(
     readonly telephonySessionId: string,
     readonly extensionId: string,
-    private objections: ObjectionEngine
+    private objections: ObjectionEngine,
+    private getBestPlays?: () => Promise<string[]>
   ) {
     this.streams = {
       caller: this.makeStream("caller"),
@@ -85,6 +96,7 @@ export class CallPipeline {
     if (config.llmApiKey) {
       this.checklistTimer = setInterval(() => this.refreshChecklist(), CHECKLIST_INTERVAL_MS);
     }
+    this.deadAirTimer = setInterval(() => this.checkDeadAir(), DEAD_AIR_POLL_MS);
   }
 
   private makeStream(speaker: SpeakerChannel): DeepgramLiveStream {
@@ -96,6 +108,8 @@ export class CallPipeline {
   }
 
   private onTranscript(r: TranscriptResult): void {
+    this.lastActivityAt = Date.now();
+    this.deadAirFired = false;
     this.bus.emit("transcript", r);
     if (r.isFinal) {
       const entry = { speaker: r.speaker, text: r.text };
@@ -174,7 +188,9 @@ export class CallPipeline {
     this.specInFlight = true;
     this.lastAiAt = Date.now();
     this.bus.emit("assist-thinking", {});
-    assistWithAi(this.history, r.text, r.language)
+    const plays = this.getBestPlays?.();
+    Promise.resolve(plays)
+      .then((p) => assistWithAi(this.history, r.text, r.language, p))
       .then((res) => {
         if (!res) return;
         // A different utterance superseded this interim while the call ran.
@@ -209,7 +225,8 @@ export class CallPipeline {
     this.aiInFlight++;
     this.lastAiAt = now;
     this.bus.emit("assist-thinking", {});
-    assistWithAi(this.history, r.text, r.language)
+    Promise.resolve(this.getBestPlays?.())
+      .then((p) => assistWithAi(this.history, r.text, r.language, p))
       .then((res) => {
         if (!res) return;
         const suggestion: Suggestion = {
@@ -229,6 +246,43 @@ export class CallPipeline {
       .finally(() => this.aiInFlight--);
   }
 
+  /**
+   * Silence watchdog: no transcript activity on either channel for
+   * DEAD_AIR_MS -> one nudge per lull (re-arms when speech resumes).
+   */
+  private checkDeadAir(): void {
+    if (this.paused || this.finalized || this.deadAirFired) return;
+    if (Date.now() - this.lastActivityAt < DEAD_AIR_MS) return;
+    this.deadAirFired = true;
+    this.bus.emit("suggestion", {
+      kind: "nudge",
+      objectionId: "dead-air",
+      title: "Re-engage the caller",
+      language: "en",
+      response:
+        "Confirm the next step out loud — ask a question, recap what you have, or offer to schedule the consultation.",
+      followUp: "",
+      escalate: false,
+      matchedText: "",
+    } satisfies Suggestion);
+  }
+
+  private emitNudge(text: string): void {
+    const key = normalize(text);
+    if (this.seenNudges.has(key)) return;
+    this.seenNudges.add(key);
+    this.bus.emit("suggestion", {
+      kind: "nudge",
+      objectionId: `nudge-${key.slice(0, 24)}`,
+      title: "Coaching nudge",
+      language: "en",
+      response: text,
+      followUp: "",
+      escalate: false,
+      matchedText: "",
+    } satisfies Suggestion);
+  }
+
   private refreshChecklist(): void {
     if (this.paused || this.finalized) return;
     if (this.fullTranscript.length === this.extractedFinals) return;
@@ -244,6 +298,15 @@ export class CallPipeline {
         }));
         this.lastChecklistItems = items;
         this.bus.emit("checklist", items);
+        // Live lead-sheet values — emit only when something changed.
+        const changed = Object.entries(result.fields).filter(
+          ([k, v]) => this.liveFields[k] !== v
+        );
+        if (changed.length) {
+          this.liveFields = { ...this.liveFields, ...result.fields };
+          this.bus.emit("fields", this.liveFields);
+        }
+        for (const n of result.nudges) this.emitNudge(n.text);
         // New flags only — each pass re-scans the whole transcript window.
         const fresh = result.flags.filter(
           (f) => !this.seenFlags.has(f.label.toLowerCase())
@@ -267,10 +330,16 @@ export class CallPipeline {
     if (this.finalized) return null;
     this.finalized = true;
     clearInterval(this.checklistTimer);
+    clearInterval(this.deadAirTimer);
     clearTimeout(this.specTimer);
     this.streams.caller.close();
     this.streams.agent.close();
     const summary = await summarizeCall(this.fullTranscript).catch(() => null);
+    // Merge live-extracted caller-card values into the summary fields — the
+    // live pass often catches details the one-shot summary misses.
+    if (summary) {
+      summary.fields = { ...this.liveFields, ...summary.fields };
+    }
     const coverage = {
       covered: this.lastChecklistItems.filter((i) => i.covered).length,
       total: this.lastChecklistItems.length || INTAKE_CHECKLIST.length,
@@ -296,6 +365,7 @@ export class CallPipeline {
   dispose(): void {
     this.finalized = true;
     clearInterval(this.checklistTimer);
+    clearInterval(this.deadAirTimer);
     clearTimeout(this.specTimer);
     this.streams.caller.close();
     this.streams.agent.close();

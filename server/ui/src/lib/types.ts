@@ -1,7 +1,7 @@
 // Wire protocol shared with server/src/hub.ts — keep in sync.
 
 export type Speaker = "caller" | "agent";
-export type SuggestionKind = "objection" | "faq" | "question" | "ai";
+export type SuggestionKind = "objection" | "faq" | "question" | "ai" | "nudge";
 
 export interface TranscriptEvent {
   type: "transcript";
@@ -90,6 +90,7 @@ export type ServerEvent =
   | TranscriptEvent
   | SuggestionEvent
   | { type: "checklist"; items: ChecklistItem[] }
+  | { type: "fields"; fields: Record<string, string> }
   | SummaryEvent
   | { type: "assist-thinking" }
   | { type: "paused"; paused: boolean }

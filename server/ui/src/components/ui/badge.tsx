@@ -11,6 +11,7 @@ const badgeVariants = cva(
         faq: "border-emerald-300 bg-emerald-50 text-emerald-700",
         question: "border-sky-300 bg-sky-50 text-sky-700",
         ai: "border-violet-300 bg-violet-50 text-violet-700",
+        nudge: "border-teal-300 bg-teal-50 text-teal-700",
         escalate: "border-red-300 bg-red-50 text-red-700",
         neutral: "border-zinc-300 bg-zinc-100 text-zinc-600",
       },

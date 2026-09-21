@@ -104,6 +104,34 @@ export function createHttpApp(
     res.json(result);
   });
 
+  /** QA review queue — calls flagged for supervisor attention, with reasons. */
+  app.get("/api/admin/qa", adminAuth, async (_req, res) => {
+    res.json({ queue: await store.qaQueue() });
+  });
+
+  /**
+   * Best plays: supervisor-promoted responses that converted. Injected into
+   * AI prompts so one agent's winning line helps the whole team.
+   */
+  app.get("/api/admin/plays", adminAuth, async (_req, res) => {
+    res.json({ plays: await store.listPlays() });
+  });
+
+  app.post("/api/admin/plays", adminAuth, async (req, res) => {
+    const { title, text, sessionId } = req.body ?? {};
+    if (!title?.trim() || !text?.trim()) {
+      return res.status(400).json({ error: "title and text required" });
+    }
+    const id = await store.addPlay(
+      String(title).trim(),
+      String(text).trim(),
+      sessionId ? String(sessionId) : undefined,
+      (req as any).user?.name
+    );
+    if (id == null) return res.status(503).json({ error: "no database" });
+    res.json({ id });
+  });
+
   app.post("/api/pair/exchange", async (req, res) => {
     const { extensionId, code } = req.body ?? {};
     if (!extensionId || !code) {

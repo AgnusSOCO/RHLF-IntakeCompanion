@@ -34,6 +34,14 @@ export interface CallFlag {
 export interface ChecklistResult {
   covered: Record<string, string>;
   flags: CallFlag[];
+  /** Live-extracted field values for the caller card (name, contact, etc). */
+  fields: Record<string, string>;
+  nudges: CallNudge[];
+}
+
+export interface CallNudge {
+  kind: "empathy" | "compliance" | "followup";
+  text: string;
 }
 
 const SYSTEM_PROMPT = `You are the live-call assistant for Richard Harris Law Firm, a personal-injury law firm in Las Vegas, Nevada. You listen to a real-time intake call and help the INTAKE AGENT — who is not an attorney and cannot give legal advice — respond to caller objections and questions.
@@ -61,9 +69,21 @@ Fields: caller_identity (name + how to reach them), incident_type (crash/slip-fa
 
 Output ONLY JSON:
 {"covered": {"<field_id>": "<≤8-word detail from transcript>"},
+ "fields": {"caller_name": "", "contact": "", "incident_type": "", "incident_date": "", "location": "", "injuries": "", "insurance": ""},
+ "nudges": [{"kind": "empathy|compliance|followup", "text": "<≤10-word agent prompt>"}],
  "flags": [{"label": "<≤8-word description>", "severity": "alert|info"}]}
 
 Include ONLY fields actually discussed. Spanish transcript is fine; write details in English.
+"fields" = the live lead sheet: concrete values the caller gave (name, phone/email,
+what happened, when, where, injuries, insurance). Leave empty when unknown.
+
+"nudges" — at most 1, only when clearly warranted; omit otherwise:
+- "empathy": caller expressed pain, fear, grief, or frustration and the agent moved
+  on without acknowledging it (e.g. "Acknowledge their frustration before continuing").
+- "compliance": the agent stated or implied a legal conclusion, a fee percentage,
+  a case outcome, or missed a required disclosure (e.g. "Clarify you're not an attorney").
+- "followup": caller shared an important detail the agent never acknowledged or
+  confirmed (e.g. "Confirm the callback number they gave").
 
 Flags — emit only when the transcript clearly contains it, max 3, most important first:
 - "alert": medical emergency or caller in danger now, self-harm, caller already represented by
@@ -177,11 +197,20 @@ async function callLlm(
 export async function assistWithAi(
   history: { speaker: string; text: string }[],
   lastUtterance: string,
-  language?: string
+  language?: string,
+  bestPlays?: string[]
 ): Promise<AiAssist | null> {
   if (!config.llmApiKey) return null;
+  // Supervisor-promoted winning responses — the team's institutional knowledge,
+  // injected as extra grounding so a play that converted once helps every agent.
+  const system = bestPlays?.length
+    ? `${SYSTEM_PROMPT}\n\nApproved responses that have worked well on past calls (prefer these when the situation matches):\n${bestPlays
+        .slice(0, 6)
+        .map((p) => `- ${p}`)
+        .join("\n")}`
+    : SYSTEM_PROMPT;
   const content = await callLlm(
-    SYSTEM_PROMPT,
+    system,
     USER_PAYLOAD(history, lastUtterance, language),
     320
   );
@@ -210,6 +239,8 @@ export async function extractChecklist(
   try {
     const parsed = JSON.parse(content) as {
       covered?: Record<string, string>;
+      fields?: Record<string, string>;
+      nudges?: { kind?: string; text?: string }[];
       flags?: { label?: string; severity?: string }[];
     };
     if (!parsed.covered) return null;
@@ -222,7 +253,22 @@ export async function extractChecklist(
             severity: f.severity === "alert" ? ("alert" as const) : ("info" as const),
           }))
       : [];
-    return { covered: parsed.covered, flags };
+    const fields: Record<string, string> = {};
+    if (parsed.fields && typeof parsed.fields === "object") {
+      for (const [k, v] of Object.entries(parsed.fields)) {
+        if (typeof v === "string" && v.trim()) fields[k] = v.trim().slice(0, 120);
+      }
+    }
+    const nudges: CallNudge[] = Array.isArray(parsed.nudges)
+      ? parsed.nudges
+          .filter((n) => n && typeof n.text === "string" && n.text.trim())
+          .slice(0, 1)
+          .map((n) => ({
+            kind: n.kind === "empathy" || n.kind === "compliance" ? n.kind : ("followup" as const),
+            text: n.text!.trim().slice(0, 100),
+          }))
+      : [];
+    return { covered: parsed.covered, flags, fields, nudges };
   } catch {
     return null;
   }

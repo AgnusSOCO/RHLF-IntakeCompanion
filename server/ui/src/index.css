@@ -151,6 +151,15 @@ body {
     0 1px 3px rgb(0 0 0 / 0.06);
 }
 
+/* Lead-sheet field flash when the AI fills/updates a value */
+@keyframes field-flash {
+  0% { background-color: rgb(16 185 129 / 0.18); }
+  100% { background-color: transparent; }
+}
+.field-flash {
+  animation: field-flash 1.4s ease-out;
+}
+
 /* View transition between tabs */
 @keyframes view-in {
   from { opacity: 0; transform: translateY(4px); }

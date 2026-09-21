@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { History, Lightbulb, Radio, ShieldAlert } from "lucide-react";
 import { CallBanner } from "./components/CallBanner";
+import { CallerCard } from "./components/CallerCard";
 import { ChecklistStrip } from "./components/ChecklistStrip";
 import { DispositionBar } from "./components/DispositionBar";
 import { FlagStrip } from "./components/FlagStrip";
@@ -100,6 +101,11 @@ export default function App() {
             speaking={state.speaking}
           />
           <FlagStrip flags={state.flags} />
+          <CallerCard
+            fields={state.liveFields}
+            callActive={state.call.active}
+            callerNumber={state.call.callerNumber}
+          />
           <ChecklistStrip items={state.checklist} callActive={state.call.active} />
           {state.error && (
             <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-[11px] text-amber-700">
