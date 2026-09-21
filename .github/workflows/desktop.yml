@@ -7,6 +7,7 @@ on:
   push:
     branches: [main]
     paths: ["desktop/**", ".github/workflows/desktop.yml"]
+    tags: ["v*"]
   workflow_dispatch:
 
 jobs:
@@ -28,3 +29,16 @@ jobs:
         with:
           name: IntakeCompanion
           path: desktop/src/IntakeCompanion/bin/Release/net8.0-windows/win-x64/publish/
+
+      # Tag pushes (v*) publish the exe as a downloadable GitHub Release.
+      - name: Publish release
+        if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create ${{ github.ref_name }}
+          desktop/src/IntakeCompanion/bin/Release/net8.0-windows/win-x64/publish/IntakeCompanion.exe
+          --title "Intake Companion ${{ github.ref_name }}" --generate-notes
+          || gh release upload ${{ github.ref_name }}
+          desktop/src/IntakeCompanion/bin/Release/net8.0-windows/win-x64/publish/IntakeCompanion.exe
+          --clobber
