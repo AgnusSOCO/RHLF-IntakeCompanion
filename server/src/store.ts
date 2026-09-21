@@ -66,6 +66,7 @@ ALTER TABLE calls ADD COLUMN IF NOT EXISTS disposition TEXT;
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS disposition_at TIMESTAMPTZ;
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS suggestion_events JSONB;
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS languages JSONB;
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS notes JSONB;
 CREATE INDEX IF NOT EXISTS calls_ext_started ON calls (extension_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS calls_caller ON calls (caller_number);
 CREATE TABLE IF NOT EXISTS plays (
@@ -264,6 +265,32 @@ export class Store {
     return (rowCount ?? 0) > 0;
   }
 
+  /** Supervisor coaching note appended to a call; agents see it in History. */
+  async addCallNote(
+    sessionId: string,
+    text: string,
+    author?: string
+  ): Promise<boolean> {
+    if (!this.ready) return false;
+    const note = JSON.stringify([{ at: Date.now(), author: author || "Supervisor", text }]);
+    const { rowCount } = await this.pool!.query(
+      `UPDATE calls SET notes = coalesce(notes, '[]'::jsonb) || $1::jsonb
+       WHERE session_id = $2`,
+      [note, sessionId]
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
+  /** Hard-delete a call record + transcript (PII removal on request). */
+  async deleteCall(sessionId: string): Promise<boolean> {
+    if (!this.ready) return false;
+    const { rowCount } = await this.pool!.query(
+      `DELETE FROM calls WHERE session_id = $1`,
+      [sessionId]
+    );
+    return (rowCount ?? 0) > 0;
+  }
+
   /** Prior call count + most recent call context for this caller number. */
   async callerHistory(
     callerNumber: string
@@ -306,6 +333,7 @@ export class Store {
     coverageTotal?: number;
     flags?: CallFlag[];
     disposition?: string;
+    notes?: { at: number; author: string; text: string }[];
   } {
     return {
       sessionId: r.session_id,
@@ -322,6 +350,7 @@ export class Store {
       coverageTotal: r.coverage_total,
       flags: r.flags ?? undefined,
       disposition: r.disposition ?? undefined,
+      notes: r.notes ?? undefined,
     };
   }
 

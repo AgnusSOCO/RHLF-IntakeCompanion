@@ -11,10 +11,12 @@ export function AskBar({
   callActive,
   thinking,
   onAsk,
+  trailing,
 }: {
   callActive: boolean;
   thinking: boolean;
   onAsk: (question: string) => void;
+  trailing?: React.ReactNode;
 }) {
   const [value, setValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -66,6 +68,7 @@ export function AskBar({
         <kbd className="hidden shrink-0 rounded border border-zinc-200 bg-white px-1.5 py-0.5 text-[9px] font-medium text-zinc-400 sm:block">
           /
         </kbd>
+        {trailing}
       </div>
     </div>
   );

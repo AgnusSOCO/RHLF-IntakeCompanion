@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { History, Lightbulb, Radio, ShieldAlert } from "lucide-react";
+import { History, Lightbulb, Minimize2, Maximize2, Radio, ShieldAlert } from "lucide-react";
 import { CallBanner } from "./components/CallBanner";
 import { AskBar } from "./components/AskBar";
 import { CallerCard } from "./components/CallerCard";
@@ -7,6 +7,7 @@ import { ChecklistStrip } from "./components/ChecklistStrip";
 import { DispositionBar } from "./components/DispositionBar";
 import { FlagStrip } from "./components/FlagStrip";
 import { GuidanceCard, ThinkingCard } from "./components/GuidanceCard";
+import { HandoffButton } from "./components/HandoffButton";
 import { Header } from "./components/Header";
 import { HistoryView } from "./components/HistoryView";
 import { ScriptPanel } from "./components/ScriptPanel";
@@ -34,6 +35,7 @@ export default function App() {
   const token = params.get("token");
   const { state, setPaused, dismiss, sendFeedback, ask, markStepDone, cardStaleMs } = useAssistant(extensionId, token);
   const [tab, setTab] = useState<Tab>("live");
+  const [compact, setCompact] = useState(false);
   const now = Date.now();
 
   // A live call always takes priority — snap back to the Live tab on callStart.
@@ -83,7 +85,7 @@ export default function App() {
         onPause={setPaused}
       />
 
-      <div className="border-b border-zinc-200 bg-white px-4 py-1.5">
+      <div className="flex items-center border-b border-zinc-200 bg-white px-4 py-1.5">
         <div className="flex w-fit gap-0.5 rounded-lg bg-zinc-100 p-0.5">
           {(
             [
@@ -106,6 +108,16 @@ export default function App() {
             </button>
           ))}
         </div>
+        {tab === "live" && (
+          <button
+            onClick={() => setCompact((v) => !v)}
+            title={compact ? "Show full detail" : "Compact mode — hide lead sheet + checklist"}
+            className="ml-auto flex items-center gap-1 rounded-md px-2 py-1 text-[10.5px] font-medium text-zinc-400 transition-colors hover:bg-zinc-100 hover:text-zinc-700"
+          >
+            {compact ? <Maximize2 className="h-3 w-3" /> : <Minimize2 className="h-3 w-3" />}
+            {compact ? "Full" : "Compact"}
+          </button>
+        )}
       </div>
 
       {tab === "history" ? (
@@ -123,12 +135,16 @@ export default function App() {
           />
           <FlagStrip flags={state.flags} />
           <ScriptPanel script={state.script} callActive={state.call.active} onMarkDone={markStepDone} />
-          <CallerCard
-            fields={state.liveFields}
-            callActive={state.call.active}
-            callerNumber={state.call.callerNumber}
-          />
-          <ChecklistStrip items={state.checklist} callActive={state.call.active} />
+          {!compact && (
+            <>
+              <CallerCard
+                fields={state.liveFields}
+                callActive={state.call.active}
+                callerNumber={state.call.callerNumber}
+              />
+              <ChecklistStrip items={state.checklist} callActive={state.call.active} />
+            </>
+          )}
           {state.error && (
             <div className="border-b border-amber-200 bg-amber-50 px-4 py-1.5 text-[11px] text-amber-700">
               Transcription: {state.error}
@@ -180,6 +196,16 @@ export default function App() {
             callActive={state.call.active}
             thinking={state.thinking}
             onAsk={ask}
+            trailing={
+              <HandoffButton
+                callActive={state.call.active}
+                callerNumber={state.call.callerNumber}
+                fields={state.liveFields}
+                checklist={state.checklist}
+                flags={state.flags}
+                segments={state.segments}
+              />
+            }
           />
         </div>
       )}

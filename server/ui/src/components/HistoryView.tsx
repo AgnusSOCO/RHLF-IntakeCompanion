@@ -186,6 +186,18 @@ function CallRow({ call }: { call: HistoryCall }) {
               Coaching: {s.coaching}
             </p>
           )}
+          {call.notes?.map((n, i) => (
+            <div
+              key={i}
+              className="rounded-md border border-violet-200 bg-violet-50 px-2.5 py-1.5 text-[11px] text-violet-900"
+            >
+              <span className="font-semibold">{n.author}</span>
+              <span className="text-violet-400">
+                {" "}· {new Date(n.at).toLocaleDateString()}
+              </span>
+              <p className="mt-0.5 leading-snug">{n.text}</p>
+            </div>
+          ))}
           {call.transcript && call.transcript.length > 0 && (
             <div className="max-h-48 space-y-1.5 overflow-y-auto rounded-md border border-zinc-100 bg-zinc-50/60 p-2.5 scroll-slim">
               {call.transcript.map((seg, i) => (

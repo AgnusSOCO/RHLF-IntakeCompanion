@@ -67,6 +67,7 @@ export interface HistoryCall {
   coverageTotal?: number;
   flags?: CallFlag[];
   disposition?: string;
+  notes?: { at: number; author: string; text: string }[];
 }
 
 export interface ChecklistItem {

@@ -190,6 +190,31 @@ export function createHttpApp(
     res.json({ id });
   });
 
+  /**
+   * Supervisor coaching note on a call. Stored on the call record — the
+   * agent sees it in their History view (closes the coaching loop).
+   *   POST /api/admin/calls/:sessionId/note  {text, author?}
+   */
+  app.post("/api/admin/calls/:sessionId/note", adminAuth, async (req, res) => {
+    const text = String(req.body?.text ?? "").trim().slice(0, 2000);
+    if (!text) return res.status(400).json({ error: "text required" });
+    const ok = await store.addCallNote(
+      String(req.params.sessionId),
+      text,
+      req.body?.author ? String(req.body.author).slice(0, 80) : undefined
+    );
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
+  /**
+   * PII removal: hard-delete a call record including transcript + summary.
+   * For caller deletion requests / retention enforcement.
+   */
+  app.delete("/api/admin/calls/:sessionId", adminAuth, async (req, res) => {
+    const ok = await store.deleteCall(String(req.params.sessionId));
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
   app.post("/api/pair/exchange", async (req, res) => {
     const { extensionId, code } = req.body ?? {};
     if (!extensionId || !code) {
