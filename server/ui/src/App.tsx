@@ -9,6 +9,7 @@ import { FlagStrip } from "./components/FlagStrip";
 import { GuidanceCard, ThinkingCard } from "./components/GuidanceCard";
 import { Header } from "./components/Header";
 import { HistoryView } from "./components/HistoryView";
+import { ScriptPanel } from "./components/ScriptPanel";
 import { SummaryCard } from "./components/SummaryCard";
 import { Transcript } from "./components/Transcript";
 import { useAssistant } from "./lib/useAssistant";
@@ -121,6 +122,7 @@ export default function App() {
             speaking={state.speaking}
           />
           <FlagStrip flags={state.flags} />
+          <ScriptPanel script={state.script} callActive={state.call.active} />
           <CallerCard
             fields={state.liveFields}
             callActive={state.call.active}

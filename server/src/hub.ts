@@ -2,6 +2,7 @@ import WebSocket from "ws";
 import { CallTracker, CallStarted } from "./ringcentral/callTracker";
 import { CallPipeline } from "./audio/pipeline";
 import { ObjectionEngine } from "./assist/objections";
+import { ScriptEngine } from "./assist/script";
 import { SpeakerChannel } from "./audio/stt";
 import { CallLog } from "./callLog";
 import { Store } from "./store";
@@ -44,7 +45,8 @@ export class Hub {
     private tracker: CallTracker,
     private objections: ObjectionEngine,
     private callLog: CallLog,
-    private store: Store
+    private store: Store,
+    private script: ScriptEngine
   ) {
     tracker.on("callStarted", (c: CallStarted) => this.onCallStarted(c));
     tracker.on("callEnded", (c: { extensionId: string; telephonySessionId: string }) =>
@@ -264,7 +266,8 @@ export class Hub {
       sessionId,
       extensionId,
       this.objections,
-      () => this.store.bestPlays()
+      () => this.store.bestPlays(),
+      this.script
     );
     e.pipeline = pipeline;
 
@@ -286,6 +289,7 @@ export class Hub {
     });
     pipeline.bus.on("checklist", (items) => fanOut({ type: "checklist", items }));
     pipeline.bus.on("fields", (fields) => fanOut({ type: "fields", fields }));
+    pipeline.bus.on("script", (state) => fanOut({ type: "script", state }));
     pipeline.bus.on("flags", (flags) => fanOut({ type: "flags", flags }));
     pipeline.bus.on("stt-error", (err) => {
       console.error(`[stt] ext=${extensionId}: ${err.message}`);

@@ -76,6 +76,26 @@ export interface ChecklistItem {
   detail?: string;
 }
 
+export interface ScriptStep {
+  id: string;
+  label: string;
+  text: string;
+  done: boolean;
+}
+
+export interface ScriptSection {
+  id: string;
+  title: string;
+  steps: ScriptStep[];
+}
+
+export interface ScriptState {
+  sections: ScriptSection[];
+  currentStepId: string | null;
+  completed: number;
+  total: number;
+}
+
 export interface SummaryEvent {
   type: "summary";
   sessionId: string;
@@ -98,6 +118,7 @@ export type ServerEvent =
   | SuggestionEvent
   | { type: "checklist"; items: ChecklistItem[] }
   | { type: "fields"; fields: Record<string, string> }
+  | { type: "script"; state: ScriptState }
   | SummaryEvent
   | { type: "assist-thinking" }
   | { type: "paused"; paused: boolean }

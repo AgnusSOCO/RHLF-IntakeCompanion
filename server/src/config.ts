@@ -48,6 +48,7 @@ export const config = {
   },
   publicUrl: env("PUBLIC_URL").replace(/\/$/, ""),
   playbookPath: path.resolve(__dirname, "..", env("PLAYBOOK_PATH", "playbook/playbook.json")),
+  scriptPath: path.resolve(__dirname, "..", env("SCRIPT_PATH", "playbook/script.json")),
 } as const;
 
 export function rcConfigured(): boolean {

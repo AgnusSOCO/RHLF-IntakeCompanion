@@ -3,6 +3,7 @@ import { DeepgramLiveStream, SpeakerChannel, TranscriptResult } from "./stt";
 import { ObjectionEngine, Suggestion } from "../assist/objections";
 import { assistWithAi, askAssistant, extractChecklist, summarizeCall, CallSummary, CallFlag } from "../assist/ai";
 import { INTAKE_CHECKLIST, ChecklistItem } from "../assist/checklist";
+import { ScriptEngine, ScriptState } from "../assist/script";
 import { config } from "../config";
 
 /**
@@ -74,6 +75,9 @@ export class CallPipeline {
   private seenNudges = new Set<string>(); // dedupe empathy/compliance nudges
   private liveFields: Record<string, string> = {};
   private lastChecklistItems: ChecklistItem[] = [];
+  private lastCovered: Record<string, string> = {};
+  private lastScriptJson = "";
+  private readonly startedAt = Date.now();
   private lastActivityAt = Date.now();
   private deadAirFired = false;
   private deadAirTimer?: NodeJS.Timeout;
@@ -85,7 +89,8 @@ export class CallPipeline {
     readonly telephonySessionId: string,
     readonly extensionId: string,
     private objections: ObjectionEngine,
-    private getBestPlays?: () => Promise<string[]>
+    private getBestPlays?: () => Promise<string[]>,
+    private script?: ScriptEngine
   ) {
     this.streams = {
       caller: this.makeStream("caller"),
@@ -277,7 +282,24 @@ export class CallPipeline {
    * Silence watchdog: no transcript activity on either channel for
    * DEAD_AIR_MS -> one nudge per lull (re-arms when speech resumes).
    */
+  /** Re-evaluate the dynamic script; emit only when the state changed. */
+  private refreshScript(): void {
+    if (!this.script?.enabled || this.finalized) return;
+    const state: ScriptState = this.script.evaluate({
+      covered: this.lastCovered,
+      fields: this.liveFields,
+      flags: this.emittedFlags,
+      elapsedMs: Date.now() - this.startedAt,
+    });
+    const json = JSON.stringify(state);
+    if (json !== this.lastScriptJson) {
+      this.lastScriptJson = json;
+      this.bus.emit("script", state);
+    }
+  }
+
   private checkDeadAir(): void {
+    this.refreshScript(); // autoAfter steps tick here even with no new speech
     if (this.paused || this.finalized || this.deadAirFired) return;
     if (Date.now() - this.lastActivityAt < DEAD_AIR_MS) return;
     this.deadAirFired = true;
@@ -324,7 +346,9 @@ export class CallPipeline {
           detail: result.covered[f.id],
         }));
         this.lastChecklistItems = items;
+        this.lastCovered = result.covered;
         this.bus.emit("checklist", items);
+        this.refreshScript();
         // Live lead-sheet values — emit only when something changed.
         const changed = Object.entries(result.fields).filter(
           ([k, v]) => this.liveFields[k] !== v

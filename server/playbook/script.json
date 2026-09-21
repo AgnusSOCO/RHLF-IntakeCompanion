@@ -1,0 +1,171 @@
+{
+  "_comment": "Dynamic intake script for Richard Harris Law Firm. Sections evaluate top-to-bottom; a section appears when its `when` condition matches (field value regex or flag label regex — omit for always-on). Steps auto-complete when their `field` is covered by the live extraction pass, or when `autoAfter` seconds have elapsed since call start. The UI highlights the first incomplete step as the current beat.",
+  "sections": [
+    {
+      "id": "opening",
+      "title": "Opening",
+      "steps": [
+        {
+          "id": "greeting",
+          "label": "Greeting + agency disclosure",
+          "text": "Thank you for calling Richard Harris Law Firm — my name is ____. I help our attorneys with new case intake. Just so you know, I'm not an attorney, but everything you tell me goes straight to our legal team.",
+          "autoAfter": 20
+        },
+        {
+          "id": "name_contact",
+          "label": "Caller name + best contact",
+          "text": "Can I get your full name, and the best phone number or email to reach you?",
+          "field": "caller_identity"
+        },
+        {
+          "id": "what_happened",
+          "label": "What happened",
+          "text": "Tell me what happened — take your time, I'm listening.",
+          "field": "incident_type"
+        }
+      ]
+    },
+    {
+      "id": "incident",
+      "title": "Incident details",
+      "steps": [
+        {
+          "id": "when",
+          "label": "When it happened",
+          "text": "When did this happen — do you remember the date?",
+          "field": "incident_date"
+        },
+        {
+          "id": "where",
+          "label": "Where it happened",
+          "text": "And where exactly did this happen?",
+          "field": "location"
+        },
+        {
+          "id": "how_fault",
+          "label": "How it happened / fault",
+          "text": "Can you walk me through how it happened — do you know who was at fault?",
+          "field": "how_it_happened"
+        }
+      ]
+    },
+    {
+      "id": "auto_extras",
+      "title": "Vehicle accident details",
+      "when": { "field": "incident_type", "matches": "car|crash|accident|vehicle|collision|auto|truck|motorcycle|uber|lyft|rideshare|hit" },
+      "steps": [
+        {
+          "id": "police",
+          "label": "Police report",
+          "text": "Did the police come to the scene — is there a report?",
+          "field": "police_report"
+        },
+        {
+          "id": "insurance_auto",
+          "label": "Insurance details",
+          "text": "Do you have insurance information for yourself or the other driver?",
+          "field": "insurance"
+        }
+      ]
+    },
+    {
+      "id": "premises_extras",
+      "title": "Premises / slip-fall details",
+      "when": { "field": "incident_type", "matches": "slip|fall|trip|premises|store|property|dog|bite" },
+      "steps": [
+        {
+          "id": "report_filed",
+          "label": "Incident report",
+          "text": "Did you report it to the property owner or manager? Was an incident report made?",
+          "field": "police_report"
+        },
+        {
+          "id": "witnesses",
+          "label": "Witnesses / photos",
+          "text": "Was anyone else there? Did you get photos of the scene or the hazard?",
+          "autoAfter": -1
+        }
+      ]
+    },
+    {
+      "id": "injuries",
+      "title": "Injuries & treatment",
+      "steps": [
+        {
+          "id": "injuries",
+          "label": "Injuries",
+          "text": "I'm sorry you're dealing with this. What injuries did you suffer?",
+          "field": "injuries"
+        },
+        {
+          "id": "medical",
+          "label": "Medical care",
+          "text": "Have you seen a doctor or gone to the ER? Are you still treating?",
+          "field": "medical"
+        }
+      ]
+    },
+    {
+      "id": "representation",
+      "title": "Insurance & representation",
+      "steps": [
+        {
+          "id": "insurance_any",
+          "label": "Insurance contact",
+          "text": "Has any insurance company contacted you? Important: please don't give them a recorded statement before we talk.",
+          "field": "insurance"
+        },
+        {
+          "id": "other_attorney",
+          "label": "Other attorney",
+          "text": "Have you spoken with or hired any other attorney about this?",
+          "field": "representation"
+        }
+      ]
+    },
+    {
+      "id": "close",
+      "title": "Close",
+      "steps": [
+        {
+          "id": "recap",
+          "label": "Recap + confirm contact",
+          "text": "Let me make sure I have this right… and is this the best number to reach you?",
+          "autoAfter": -1
+        },
+        {
+          "id": "next_step",
+          "label": "Next step",
+          "text": "Here's what happens next: I'm passing everything to an attorney for review — consultations are completely free, and you pay nothing unless we recover money for you. Do you have any questions for me?",
+          "autoAfter": -1
+        }
+      ]
+    },
+    {
+      "id": "represented_wrap",
+      "title": "Already represented — wrap",
+      "when": { "flag": "represent" },
+      "steps": [
+        {
+          "id": "represented_note",
+          "label": "Caller has counsel",
+          "text": "Since you're already working with an attorney, I'd recommend directing questions to them — but let me note your details and have our team confirm whether we can help.",
+          "autoAfter": -1
+        }
+      ]
+    },
+    {
+      "id": "emergency",
+      "title": "Emergency — escalate now",
+      "when": { "flag": "emergency|danger|hurt now|harm" },
+      "steps": [
+        {
+          "id": "emergency_escalate",
+          "label": "Immediate danger",
+          "text": "If you're in danger or need medical help right now, please call 911 first. I'm also getting my supervisor on the line right away.",
+          "autoAfter": -1
+        }
+      ]
+    }
+  ]
+}

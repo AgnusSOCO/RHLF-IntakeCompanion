@@ -3,6 +3,7 @@ import type {
   CallFlag,
   ChecklistItem,
   GuidanceItem,
+  ScriptState,
   ServerEvent,
   Speaker,
   SummaryEvent,
@@ -40,6 +41,7 @@ interface State {
   checklist: ChecklistItem[];
   /** Live caller-card values extracted as the call progresses. */
   liveFields: Record<string, string>;
+  script?: ScriptState;
   flags: CallFlag[];
   summary?: Omit<SummaryEvent, "type">;
   error?: string;
@@ -68,6 +70,7 @@ type Action =
   | { t: "card"; card: GuidanceItem }
   | { t: "checklist"; items: ChecklistItem[] }
   | { t: "fields"; fields: Record<string, string> }
+  | { t: "script"; state: ScriptState }
   | { t: "flags"; flags: CallFlag[] }
   | { t: "summary"; v: Omit<SummaryEvent, "type"> }
   | { t: "dismiss"; key: string }
@@ -96,6 +99,7 @@ function reducer(s: State, a: Action): State {
         cards: [],
         checklist: [],
         liveFields: {},
+        script: undefined,
         flags: [],
         speaking: false,
         summary: undefined,
@@ -145,6 +149,8 @@ function reducer(s: State, a: Action): State {
       return { ...s, checklist: a.items };
     case "fields":
       return { ...s, liveFields: { ...s.liveFields, ...a.fields } };
+    case "script":
+      return { ...s, script: a.state };
     case "flags": {
       const seen = new Set(s.flags.map((f) => f.label.toLowerCase()));
       const fresh = a.flags.filter((f) => !seen.has(f.label.toLowerCase()));
@@ -262,6 +268,9 @@ export function useAssistant(extensionId: string | null, token: string | null) {
             break;
           case "fields":
             dispatch({ t: "fields", fields: m.fields });
+            break;
+          case "script":
+            dispatch({ t: "script", state: m.state });
             break;
           case "summary":
             dispatch({
