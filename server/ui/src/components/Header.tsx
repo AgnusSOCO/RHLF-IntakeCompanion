@@ -27,15 +27,19 @@ export function Header({
   const c = CONN[conn];
   return (
     <header className="flex items-center gap-3 border-b border-zinc-200 bg-white px-4 py-3">
-      <div className="grid h-8 w-8 shrink-0 place-items-center rounded-lg bg-red-600 text-[11px] font-extrabold tracking-tight text-white">
-        RH
+      <div className="flex h-9 shrink-0 items-center rounded-lg bg-black px-3">
+        <img
+          src="./brand/rhlf-logo.png"
+          alt="Richard Harris Law Firm"
+          className="h-4 w-auto"
+        />
       </div>
       <div className="min-w-0 leading-tight">
         <div className="truncate text-[13px] font-semibold text-zinc-900">
           Intake Assistant
         </div>
         <div className="truncate text-[11px] text-zinc-500">
-          Richard Harris Law Firm
+          Live call companion
         </div>
       </div>
 
