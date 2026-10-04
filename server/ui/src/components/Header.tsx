@@ -34,14 +34,6 @@ export function Header({
           className="h-4 w-auto"
         />
       </div>
-      <div className="min-w-0 leading-tight">
-        <div className="truncate text-[13px] font-semibold text-zinc-900">
-          Intake Assistant
-        </div>
-        <div className="truncate text-[11px] text-zinc-500">
-          Live call companion
-        </div>
-      </div>
 
       <div className="ml-auto flex items-center gap-3">
         <div className="flex items-center gap-1.5 text-[11px] text-zinc-500">
