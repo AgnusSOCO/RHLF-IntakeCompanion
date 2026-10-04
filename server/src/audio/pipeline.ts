@@ -4,7 +4,7 @@ import { ObjectionEngine, Suggestion } from "../assist/objections";
 import { assistWithAi, askAssistant, extractChecklist, summarizeCall, CallSummary, CallFlag } from "../assist/ai";
 import { INTAKE_CHECKLIST, ChecklistItem } from "../assist/checklist";
 import { ScriptEngine, ScriptState } from "../assist/script";
-import { computeCaseScore, CaseScore } from "../assist/score";
+import { computeCaseScore, flagKey, CaseScore } from "../assist/score";
 import { config } from "../config";
 
 /**
@@ -72,7 +72,6 @@ export class CallPipeline {
   private specForText = "";    // normalized interim the spec run covered
   private specEmitted = false; // a suggestion already fired for that utterance
   private specInFlight = false; // spec AI call still resolving
-  private seenFlags = new Set<string>(); // dedupe live flags across extraction passes
   private emittedFlags: CallFlag[] = []; // persisted on the call record
   private seenNudges = new Set<string>(); // dedupe empathy/compliance nudges
   private liveFields: Record<string, string> = {};
@@ -370,15 +369,19 @@ export class CallPipeline {
           this.bus.emit("fields", this.liveFields);
         }
         for (const n of result.nudges) this.emitNudge(n.text);
-        // New flags only — each pass re-scans the whole transcript window.
-        const fresh = result.flags.filter(
-          (f) => !this.seenFlags.has(f.label.toLowerCase())
-        );
-        if (fresh.length) {
-          for (const f of fresh) this.seenFlags.add(f.label.toLowerCase());
-          this.emittedFlags.push(...fresh);
-          this.bus.emit("flags", fresh);
+        // Each pass re-scans the window and rewords the same risks — dedupe by
+        // flag category so the strip shows one chip per issue, newest wording.
+        let flagsChanged = false;
+        for (const f of result.flags) {
+          const key = flagKey(f.label);
+          const at = this.emittedFlags.findIndex((x) => flagKey(x.label) === key);
+          if (at === -1) this.emittedFlags.push(f);
+          else if (this.emittedFlags[at].label !== f.label || this.emittedFlags[at].severity !== f.severity) {
+            this.emittedFlags[at] = f;
+          } else continue;
+          flagsChanged = true;
         }
+        if (flagsChanged) this.bus.emit("flags", this.emittedFlags);
         // Live case score — deterministic signal math over the same inputs.
         const score = computeCaseScore({
           checklist: items,

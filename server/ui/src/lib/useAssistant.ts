@@ -158,11 +158,8 @@ function reducer(s: State, a: Action): State {
       return { ...s, score: a.v };
     case "script":
       return { ...s, script: a.state };
-    case "flags": {
-      const seen = new Set(s.flags.map((f) => f.label.toLowerCase()));
-      const fresh = a.flags.filter((f) => !seen.has(f.label.toLowerCase()));
-      return fresh.length ? { ...s, flags: [...s.flags, ...fresh] } : s;
-    }
+    case "flags":
+      return { ...s, flags: a.flags };
     case "summary":
       return { ...s, summary: a.v };
     case "dismiss":
