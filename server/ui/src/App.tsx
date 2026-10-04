@@ -10,6 +10,7 @@ import { GuidanceCard, ThinkingCard } from "./components/GuidanceCard";
 import { HandoffButton } from "./components/HandoffButton";
 import { Header } from "./components/Header";
 import { HistoryView } from "./components/HistoryView";
+import { ScoreBar } from "./components/ScoreBar";
 import { ScriptPanel } from "./components/ScriptPanel";
 import { SummaryCard } from "./components/SummaryCard";
 import { Transcript } from "./components/Transcript";
@@ -134,6 +135,7 @@ export default function App() {
             speaking={state.speaking}
           />
           <FlagStrip flags={state.flags} />
+          <ScoreBar score={state.score} callActive={state.call.active} />
           <ScriptPanel script={state.script} callActive={state.call.active} onMarkDone={markStepDone} />
           {!compact && (
             <>

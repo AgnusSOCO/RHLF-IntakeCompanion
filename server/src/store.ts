@@ -67,6 +67,7 @@ ALTER TABLE calls ADD COLUMN IF NOT EXISTS disposition_at TIMESTAMPTZ;
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS suggestion_events JSONB;
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS languages JSONB;
 ALTER TABLE calls ADD COLUMN IF NOT EXISTS notes JSONB;
+ALTER TABLE calls ADD COLUMN IF NOT EXISTS score JSONB;
 CREATE INDEX IF NOT EXISTS calls_ext_started ON calls (extension_id, started_at DESC);
 CREATE INDEX IF NOT EXISTS calls_caller ON calls (caller_number);
 CREATE TABLE IF NOT EXISTS plays (
@@ -156,8 +157,8 @@ export class Store {
         (session_id, extension_id, caller_number, started_at, ended_at,
          transcript_segments, suggestions, helpful, unhelpful,
          coverage, coverage_total, summary, transcript, flags,
-         suggestion_events, languages)
-       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
+         suggestion_events, languages, score)
+       VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
        ON CONFLICT (session_id) DO UPDATE SET
          ended_at = EXCLUDED.ended_at,
          transcript_segments = EXCLUDED.transcript_segments,
@@ -170,7 +171,8 @@ export class Store {
          transcript = EXCLUDED.transcript,
          flags = EXCLUDED.flags,
          suggestion_events = EXCLUDED.suggestion_events,
-         languages = EXCLUDED.languages`,
+         languages = EXCLUDED.languages,
+         score = EXCLUDED.score`,
       [
         rec.sessionId,
         rec.extensionId,
@@ -188,6 +190,7 @@ export class Store {
         JSON.stringify(flags),
         rec.suggestionEvents?.length ? JSON.stringify(rec.suggestionEvents) : null,
         languages.length ? JSON.stringify(languages) : null,
+        rec.score ? JSON.stringify(rec.score) : null,
       ]
     ).catch((e) => console.error("[store] saveCall:", e.message));
   }
@@ -351,6 +354,7 @@ export class Store {
       flags: r.flags ?? undefined,
       disposition: r.disposition ?? undefined,
       notes: r.notes ?? undefined,
+      score: r.score ?? undefined,
     };
   }
 

@@ -69,13 +69,16 @@ Fields: caller_identity (name + how to reach them), incident_type (crash/slip-fa
 
 Output ONLY JSON:
 {"covered": {"<field_id>": "<≤8-word detail from transcript>"},
- "fields": {"caller_name": "", "contact": "", "incident_type": "", "incident_date": "", "location": "", "injuries": "", "insurance": ""},
+ "fields": {"caller_name": "", "contact": "", "incident_type": "", "incident_date": "", "incident_date_iso": "", "location": "", "injuries": "", "insurance": ""},
  "nudges": [{"kind": "empathy|compliance|followup", "text": "<≤10-word agent prompt>"}],
  "flags": [{"label": "<≤8-word description>", "severity": "alert|info"}]}
 
 Include ONLY fields actually discussed. Spanish transcript is fine; write details in English.
 "fields" = the live lead sheet: concrete values the caller gave (name, phone/email,
 what happened, when, where, injuries, insurance). Leave empty when unknown.
+"incident_date_iso" = the incident date normalized to YYYY-MM-DD when the caller
+gave an exact date or a derivable one (resolve relative dates against the call
+date in the transcript); leave "" when the timing is vague.
 
 "nudges" — at most 1, only when clearly warranted; omit otherwise:
 - "empathy": caller expressed pain, fear, grief, or frustration and the agent moved

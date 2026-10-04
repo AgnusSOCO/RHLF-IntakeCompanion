@@ -207,6 +207,24 @@ export function createHttpApp(
   });
 
   /**
+   * Supervisor whisper: a coaching note pushed into the agent's live UI
+   * mid-call (dashboard "whisper" button). Not stored — it's live guidance.
+   *   POST /api/admin/whisper  {extensionId, text, author?}
+   */
+  app.post("/api/admin/whisper", adminAuth, (req, res) => {
+    const { extensionId, text, author } = req.body ?? {};
+    if (!extensionId || typeof text !== "string" || !text.trim()) {
+      return res.status(400).json({ error: "extensionId and text required" });
+    }
+    const ok = hub.whisper(
+      String(extensionId),
+      text.trim().slice(0, 300),
+      author ? String(author).slice(0, 80) : undefined
+    );
+    res.status(ok ? 200 : 404).json({ ok });
+  });
+
+  /**
    * PII removal: hard-delete a call record including transcript + summary.
    * For caller deletion requests / retention enforcement.
    */

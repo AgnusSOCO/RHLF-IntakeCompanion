@@ -1,7 +1,7 @@
 // Wire protocol shared with server/src/hub.ts — keep in sync.
 
 export type Speaker = "caller" | "agent";
-export type SuggestionKind = "objection" | "faq" | "question" | "ai" | "nudge";
+export type SuggestionKind = "objection" | "faq" | "question" | "ai" | "nudge" | "whisper";
 
 export interface TranscriptEvent {
   type: "transcript";
@@ -46,6 +46,23 @@ export interface CallFlag {
   severity: "alert" | "info";
 }
 
+export interface SolClock {
+  deadline: string;
+  daysLeft: number;
+  status: "open" | "approaching" | "critical" | "expired";
+}
+
+export interface CaseScore {
+  value: number;
+  tier: "low" | "warm" | "hot";
+  drivers: string[];
+  sol?: SolClock;
+}
+
+export interface ScoreEvent extends CaseScore {
+  type: "score";
+}
+
 export interface HistoryCall {
   sessionId: string;
   extensionId: string;
@@ -68,6 +85,7 @@ export interface HistoryCall {
   flags?: CallFlag[];
   disposition?: string;
   notes?: { at: number; author: string; text: string }[];
+  score?: { value: number; tier: string };
 }
 
 export interface ChecklistItem {
@@ -119,6 +137,7 @@ export type ServerEvent =
   | SuggestionEvent
   | { type: "checklist"; items: ChecklistItem[] }
   | { type: "fields"; fields: Record<string, string> }
+  | ScoreEvent
   | { type: "script"; state: ScriptState }
   | SummaryEvent
   | { type: "assist-thinking" }

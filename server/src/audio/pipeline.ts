@@ -4,6 +4,7 @@ import { ObjectionEngine, Suggestion } from "../assist/objections";
 import { assistWithAi, askAssistant, extractChecklist, summarizeCall, CallSummary, CallFlag } from "../assist/ai";
 import { INTAKE_CHECKLIST, ChecklistItem } from "../assist/checklist";
 import { ScriptEngine, ScriptState } from "../assist/script";
+import { computeCaseScore, CaseScore } from "../assist/score";
 import { config } from "../config";
 
 /**
@@ -28,6 +29,7 @@ import { config } from "../config";
  *   "checklist"        ChecklistItem[]
  *   "fields"           Record<string,string> — live caller-card values (deduped)
  *   "flags"            CallFlag[] — live risk/moment flags (deduped)
+ *   "score"            CaseScore — live case score + SOL clock (recomputed per pass)
  *   "stt-error"        Error
  */
 const MAX_HISTORY = 12;
@@ -74,6 +76,7 @@ export class CallPipeline {
   private emittedFlags: CallFlag[] = []; // persisted on the call record
   private seenNudges = new Set<string>(); // dedupe empathy/compliance nudges
   private liveFields: Record<string, string> = {};
+  private lastScore?: CaseScore;
   private lastChecklistItems: ChecklistItem[] = [];
   private lastCovered: Record<string, string> = {};
   private lastScriptJson = "";
@@ -376,6 +379,14 @@ export class CallPipeline {
           this.emittedFlags.push(...fresh);
           this.bus.emit("flags", fresh);
         }
+        // Live case score — deterministic signal math over the same inputs.
+        const score = computeCaseScore({
+          checklist: items,
+          fields: this.liveFields,
+          flags: this.emittedFlags,
+        });
+        this.lastScore = score;
+        this.bus.emit("score", score);
       })
       .catch(() => {});
   }
@@ -387,6 +398,7 @@ export class CallPipeline {
     coverage: { covered: number; total: number };
     flags: CallFlag[];
     missingFields: string[];
+    score?: CaseScore;
   } | null> {
     if (this.finalized) return null;
     this.finalized = true;
@@ -415,6 +427,7 @@ export class CallPipeline {
       coverage,
       flags: this.emittedFlags,
       missingFields,
+      score: this.lastScore,
     };
   }
 

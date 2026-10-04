@@ -233,12 +233,13 @@ export class Hub {
       ?.finalize()
       .then((result) => {
         if (!result) return;
-        const { summary, transcript, coverage, flags, missingFields } = result;
+        const { summary, transcript, coverage, flags, missingFields, score } = result;
         if (rec) {
           rec.endedAt = Date.now();
           rec.transcriptSegments = pipeline.finalCount;
           rec.suggestions = pipeline.suggestionCount;
           if (summary) rec.summary = summary;
+          if (score) rec.score = { value: score.value, tier: score.tier };
           // Persist the full record (transcript + summary + metrics + flags).
           this.store.saveCall(rec, transcript, coverage, flags);
         }
@@ -293,12 +294,37 @@ export class Hub {
     pipeline.bus.on("fields", (fields) => fanOut({ type: "fields", fields }));
     pipeline.bus.on("script", (state) => fanOut({ type: "script", state }));
     pipeline.bus.on("flags", (flags) => fanOut({ type: "flags", flags }));
+    pipeline.bus.on("score", (s) => fanOut({ type: "score", ...s }));
     pipeline.bus.on("stt-error", (err) => {
       console.error(`[stt] ext=${extensionId}: ${err.message}`);
       fanOut({ type: "stt-error", message: err.message });
     });
     pipeline.bus.on("assist-thinking", () => fanOut({ type: "assist-thinking" }));
     pipeline.bus.on("paused", (p) => fanOut({ type: "paused", paused: p }));
+  }
+
+  /**
+   * Supervisor whisper: pushes a coaching card straight into the agent's
+   * live UI mid-call (and echoes to admins watching). Returns false when the
+   * extension isn't connected.
+   */
+  whisper(extensionId: string, text: string, author?: string): boolean {
+    const e = this.agents.get(extensionId);
+    if (!e) return false;
+    const msg = {
+      type: "suggestion",
+      kind: "whisper",
+      objectionId: `whisper-${Date.now()}`,
+      title: author ? `Supervisor · ${author}` : "Supervisor",
+      language: "en",
+      response: text,
+      followUp: "",
+      escalate: false,
+      matchedText: "",
+    };
+    this.broadcastUi(extensionId, msg);
+    this.broadcastAdmin({ extensionId, ...msg });
+    return true;
   }
 
   private broadcastUi(extensionId: string, msg: unknown): void {

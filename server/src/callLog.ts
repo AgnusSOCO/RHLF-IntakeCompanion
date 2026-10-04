@@ -19,6 +19,8 @@ export interface CallRecord {
   priorCalls?: { count: number; lastAt: number | null };
   /** Every suggestion shown during the call — feeds objection analytics. */
   suggestionEvents?: { kind: string; title: string; escalate?: boolean; at: number }[];
+  /** Last computed live case score (0-100 + tier). */
+  score?: { value: number; tier: string };
 }
 
 const MAX_RECORDS = 500;

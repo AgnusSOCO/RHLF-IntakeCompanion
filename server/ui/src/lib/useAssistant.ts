@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useReducer, useRef } from "react";
 import type {
   CallFlag,
+  CaseScore,
   ChecklistItem,
   GuidanceItem,
   ScriptState,
@@ -41,6 +42,8 @@ interface State {
   checklist: ChecklistItem[];
   /** Live caller-card values extracted as the call progresses. */
   liveFields: Record<string, string>;
+  /** Live case score + SOL clock, recomputed each extraction pass. */
+  score?: CaseScore;
   script?: ScriptState;
   flags: CallFlag[];
   summary?: Omit<SummaryEvent, "type">;
@@ -70,6 +73,7 @@ type Action =
   | { t: "card"; card: GuidanceItem }
   | { t: "checklist"; items: ChecklistItem[] }
   | { t: "fields"; fields: Record<string, string> }
+  | { t: "score"; v: CaseScore }
   | { t: "script"; state: ScriptState }
   | { t: "flags"; flags: CallFlag[] }
   | { t: "summary"; v: Omit<SummaryEvent, "type"> }
@@ -99,6 +103,7 @@ function reducer(s: State, a: Action): State {
         cards: [],
         checklist: [],
         liveFields: {},
+        score: undefined,
         script: undefined,
         flags: [],
         speaking: false,
@@ -149,6 +154,8 @@ function reducer(s: State, a: Action): State {
       return { ...s, checklist: a.items };
     case "fields":
       return { ...s, liveFields: { ...s.liveFields, ...a.fields } };
+    case "score":
+      return { ...s, score: a.v };
     case "script":
       return { ...s, script: a.state };
     case "flags": {
@@ -268,6 +275,12 @@ export function useAssistant(extensionId: string | null, token: string | null) {
             break;
           case "fields":
             dispatch({ t: "fields", fields: m.fields });
+            break;
+          case "score":
+            dispatch({
+              t: "score",
+              v: { value: m.value, tier: m.tier, drivers: m.drivers, sol: m.sol },
+            });
             break;
           case "script":
             dispatch({ t: "script", state: m.state });

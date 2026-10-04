@@ -5,6 +5,7 @@ import {
   Compass,
   Copy,
   CornerDownRight,
+  Ear,
   MessageCircleQuestion,
   Quote,
   Sparkles,
@@ -47,6 +48,12 @@ const KIND_META = {
     Icon: Compass,
     accent: "border-l-teal-500",
     tile: "bg-teal-50 text-teal-600",
+  },
+  whisper: {
+    label: "Whisper",
+    Icon: Ear,
+    accent: "border-l-fuchsia-500",
+    tile: "bg-fuchsia-50 text-fuchsia-600",
   },
 } as const;
 
